@@ -376,75 +376,13 @@ def identificar_clausulas_importantes(texto):
             encontradas.append(clausula)
     
     return encontradas
+
 # ============================================
-# FUNCIONES MEJORADAS PARA PROMPTS ESTRUCTURADOS POR TIPO DE DOCUMENTO
+# FUNCIONES MEJORADAS PARA PROMPTS ESTRUCTURADOS
 # ============================================
 
-def get_structured_prompt(query, provider_analysis, documents_text, document_type="general"):
-    """Genera un prompt estructurado específico para el tipo de documento"""
-    
-    if document_type == "contrato" or "contrato" in query.lower() or any(word in query.lower() for word in ['cláusula', 'clausula', 'vigencia', 'plazo', 'fecha', 'terminación']):
-        return get_contract_prompt(query, documents_text)
-    elif document_type == "factura" or provider_analysis:
-        return get_provider_prompt(query, provider_analysis, documents_text)
-    else:
-        return get_general_prompt(query, documents_text)
-
-def get_contract_prompt(query, documents_text):
-    """Genera prompt específico para análisis de contratos"""
-    
-    prompt = f"""
-# CONTEXTO Y ROL
-Eres un **abogado especialista en revisión contractual** con amplia experiencia en detección de riesgos y análisis legal. 
-Tu objetivo es identificar información crítica, plazos, obligaciones y posibles riesgos en los contratos.
-
-# FORMATO DE RESPUESTA OBLIGATORIO
-**SIGUE ESTRICTAMENTE este formato en español:**
-
-## ⚖️ Análisis Contractual Principal
-[Resumen ejecutivo de 2-3 líneas con los hallazgos más importantes]
-
-## 📅 Fechas y Plazos Clave
-- **Fecha de inicio:** [Fecha específica o "No especificada"]
-- **Fecha de término:** [Fecha específica o "No especificada"] 
-- **Duración:** [Plazo específico o "No especificado"]
-- **Plazos importantes:** [Lista de plazos críticos]
-
-## 📋 Información de Partes
-- **Contratante:** [Nombre completo]
-- **Contratista:** [Nombre completo]
-- **Documentos identificatorios:** [RUC, DNI, etc.]
-
-## 💼 Obligaciones Principales
-[Lista de las 3-5 obligaciones más importantes]
-
-## ⚠️ Riesgos y Alertas
-[Identificación de riesgos contractuales, cláusulas problemáticas]
-
-## 💰 Aspectos Económicos
-- **Monto/Valor:** [Si está especificado]
-- **Forma de pago:** [Detalles de pago]
-- **Penalidades:** [Si existen]
-
-# DOCUMENTO CONTRACTUAL PROCESADO
-{documents_text[:4000]}
-
-# CONSULTA ESPECÍFICA: "{query}"
-
-# REGLAS ESTRICTAS PARA CONTRATOS:
-1. **BUSCAR ACTIVAMENTE fechas en formato DD/MM/AAAA o MM/DD/AAAA**
-2. **IDENTIFICAR períodos de tiempo (meses, días, años)**
-3. **DETECTAR cláusulas de confidencialidad, propiedad intelectual, terminación**
-4. **SEÑALAR obligaciones no cumplimentadas o ambiguas**
-5. **RESALTAR plazos críticos para el cumplimiento**
-6. **SI no encuentras información, DECIR "No se especifica en el contrato"**
-7. **USAR terminología legal apropiada pero comprensible**
-8. **INCLUIR citas textuales del contrato cuando sea relevante**
-"""
-    return prompt
-
-def get_provider_prompt(query, provider_analysis, documents_text):
-    """Genera prompt específico para análisis de proveedores y facturas"""
+def get_structured_prompt(query, provider_analysis, documents_text):
+    """Genera un prompt altamente estructurado para Bedrock"""
     
     # Construir contexto de proveedores de manera estructurada
     providers_context = build_providers_context(provider_analysis)
@@ -499,75 +437,6 @@ Tu objetivo principal es ayudar a tomar decisiones inteligentes sobre proveedore
 8. **INCLUIR números específicos siempre que sea posible**
 """
     return prompt
-
-def get_general_prompt(query, documents_text):
-    """Genera prompt para análisis general de documentos"""
-    
-    prompt = f"""
-# CONTEXTO Y ROL
-Eres un **analista de documentos inteligente** especializado en extraer y sintetizar información clave de diversos tipos de documentos.
-
-# FORMATO DE RESPUESTA OBLIGATORIO
-**SIGUE ESTRICTAMENTE este formato en español:**
-
-## 🎯 Resumen Ejecutivo
-[Resumen de 2-3 líneas con los puntos más importantes]
-
-## 📋 Información Clave Extraída
-- **Datos principales:** [Información más relevante]
-- **Fechas importantes:** [Fechas detectadas]
-- **Partes involucradas:** [Entidades o personas mencionadas]
-- **Valores/montos:** [Cifras importantes si las hay]
-
-## 🔍 Análisis Detallado
-[Análisis específico basado en la consulta del usuario]
-
-## 💡 Recomendaciones
-[Sugerencias basadas en el contenido del documento]
-
-# DOCUMENTO PROCESADO
-{documents_text[:4000]}
-
-# CONSULTA DEL USUARIO: "{query}"
-
-# REGLAS ESTRICTAS:
-1. **BASARSE únicamente en la información del documento proporcionado**
-2. **SER específico y concreto en las respuestas**
-3. **IDENTIFICAR fechas, nombres, montos y plazos cuando existan**
-4. **SI no hay información suficiente, INDICARLO claramente**
-5. **USAR un lenguaje claro y profesional**
-6. **ORGANIZAR la información de manera lógica**
-7. **DESTACAR los puntos más relevantes para la consulta**
-8. **EVITAR suposiciones no basadas en el documento**
-"""
-    return prompt
-
-# ============================================
-# FUNCIÓN MEJORADA PARA DETECTAR TIPO DE DOCUMENTO
-# ============================================
-
-def detect_document_type(results):
-    """Detecta el tipo de documento predominante en los resultados"""
-    if not results:
-        return "general"
-    
-    doc_types = []
-    for result in results:
-        if result.get('comprehend_analysis'):
-            clasificacion = result['comprehend_analysis'].get('clasificacion_documento', {})
-            doc_type = clasificacion.get('clase', 'desconocido')
-            doc_types.append(doc_type)
-    
-    # Contar tipos específicos
-    contrato_count = doc_types.count('contrato')
-    factura_count = doc_types.count('factura')
-    
-    if contrato_count > 0:
-        return "contrato"
-    elif factura_count > 0:
-        return "factura"
-    else:
-        return "general"
 
 def build_providers_context(provider_analysis):
     """Construye contexto estructurado de proveedores"""
@@ -1023,19 +892,34 @@ def generate_ai_recommendations(providers, products):
                 'categoria': categoria
             }
             
-            # Calcular ahorro potencial
-            precios = [p['precio'] for p in productos_con_precio if p['precio']]
-            if len(precios) > 1:
-                precio_promedio = sum(precios) / len(precios)
-                ahorro_potencial = precio_promedio - mejor_precio['precio']
-                if ahorro_potencial > 0:
-                    recomendaciones['ahorros_potenciales'].append({
-                        'categoria': categoria,
-                        'proveedor_recomendado': mejor_precio['proveedor'],
-                        'ahorro_estimado': round(ahorro_potencial, 2),
-                        'producto_ejemplo': mejor_precio['nombre']
-                    })
-    
+            # Calcular ahorro potencial CON VALIDACIONES
+        precios = [p['precio'] for p in productos_con_precio if p['precio'] is not None]
+        if len(precios) > 1:
+            precio_promedio = sum(precios) / len(precios)
+            precio_mejor = mejor_precio['precio']
+            
+            # VALIDACIÓN 1: Precios deben ser razonables (entre S/. 0.10 y S/. 10,000)
+            if (0.10 <= precio_promedio <= 10000.0 and 
+                0.10 <= precio_mejor <= 10000.0):
+                
+                # VALIDACIÓN 2: Diferencia máxima del 80% (evita outliers)
+                diferencia_maxima = precio_promedio * 0.8
+                ahorro_calculado = precio_promedio - precio_mejor
+                
+                # VALIDACIÓN 3: Ahorro mínimo significativo (S/. 0.50)
+                if ahorro_calculado >= 0.50:
+                    ahorro_potencial = min(ahorro_calculado, diferencia_maxima)
+                    
+                    # VALIDACIÓN 4: No permitir ahorros absurdamente grandes
+                    if ahorro_potencial <= 50000:  # Máximo S/. 50,000 por producto
+                        recomendaciones['ahorros_potenciales'].append({
+                            'categoria': categoria,
+                            'proveedor_recomendado': mejor_precio['proveedor'],
+                            'ahorro_estimado': round(ahorro_potencial, 2),
+                            'producto_ejemplo': mejor_precio['nombre'],
+                            'precio_referencia': round(precio_promedio, 2),
+                            'precio_mejor': round(precio_mejor, 2)
+                        })
     return recomendaciones
 
 # ============================================
