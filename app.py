@@ -12,6 +12,7 @@ from utils.bedrock_agents import invoke_agent_legacy
 from utils.textract_utils import process_files_with_textract, extract_tables_from_result
 from utils.comprehend_utils import clasificar_texto, clasificar_multiple_textos
 import re
+
 # ============================================
 # CONFIGURACIÓN
 # ============================================
@@ -37,14 +38,1101 @@ session = boto3.Session(
 comprehend = session.client('comprehend')
 
 st.set_page_config(
-    page_title="RPP Intelligence Platform",
+    page_title="RPP Intelligence Platform - Soluciones Empresariales",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
 # ============================================
-# SISTEMA DE DISEÑO CORPORATIVO PREMIUM
+# FUNCIONES ESPECÍFICAS PARA CASOS DE USO DEL CLIENTE
 # ============================================
+
+def procesar_ordenes_publicitarias(results):
+    """Procesa específicamente órdenes publicitarias de agencias"""
+    ordenes_procesadas = []
+    
+    for result in results:
+        texto = result.get('text', '')
+        if not texto:
+            continue
+            
+        # Extraer información específica de órdenes publicitarias
+        orden_info = {
+            'agencia': extraer_nombre_agencia(texto),
+            'cliente': extraer_cliente_publicidad(texto),
+            'medio': extraer_medio_publicitario(texto),
+            'spots': extraer_cantidad_spots(texto),
+            'frecuencia': extraer_frecuencia(texto),
+            'bloques_horarios': extraer_bloques_horarios(texto),
+            'duracion': extraer_duracion_spots(texto),
+            'fechas': extraer_rango_fechas(texto),
+            'inversion': extraer_inversion(texto)
+        }
+        
+        ordenes_procesadas.append(orden_info)
+    
+    return ordenes_procesadas
+
+def extraer_nombre_agencia(texto):
+    """Extrae nombre de la agencia publicitaria"""
+    patrones = [
+        r'Agencia[:\s]*([^\n]+)',
+        r'AGENCIA[:\s]*([^\n]+)',
+        r'Publicidad\s+([^\n]+)',
+        r'Mediakit\s+([^\n]+)'
+    ]
+    
+    for patron in patrones:
+        match = re.search(patron, texto, re.IGNORECASE)
+        if match:
+            return match.group(1).strip()
+    return "No detectado"
+
+def extraer_cliente_publicidad(texto):
+    """Extrae nombre del cliente de la publicidad"""
+    patrones = [
+        r'Cliente[:\s]*([^\n]+)',
+        r'Anunciante[:\s]*([^\n]+)',
+        r'MARCA[:\s]*([^\n]+)',
+        r'Producto[:\s]*([^\n]+)'
+    ]
+    
+    for patron in patrones:
+        match = re.search(patron, texto, re.IGNORECASE)
+        if match:
+            return match.group(1).strip()
+    return "No detectado"
+
+def extraer_medio_publicitario(texto):
+    """Identifica el medio publicitario (radio, TV, etc.)"""
+    medios = {
+        'radio': ['radio', 'emisora', 'frecuencia', 'AM', 'FM'],
+        'tv': ['televisión', 'television', 'canal', 'TV'],
+        'digital': ['digital', 'web', 'online', 'streaming'],
+        'prensa': ['periódico', 'periodico', 'diario', 'prensa']
+    }
+    
+    texto_lower = texto.lower()
+    for medio, palabras in medios.items():
+        if any(palabra in texto_lower for palabra in palabras):
+            return medio
+    return "No especificado"
+
+def extraer_cantidad_spots(texto):
+    """Extrae cantidad de spots publicitarios"""
+    patrones = [
+        r'(\d+)\s+spots?',
+        r'spots?[:\s]*(\d+)',
+        r'cantidad[:\s]*(\d+)\s*(?:spots|cuñas)',
+        r'(\d+)\s+cuñas?'
+    ]
+    
+    for patron in patrones:
+        match = re.search(patron, texto, re.IGNORECASE)
+        if match:
+            return int(match.group(1))
+    return 0
+
+def extraer_frecuencia(texto):
+    """Extrae frecuencia de emisión"""
+    patrones = [
+        r'frecuencia[:\s]*([^\n]+)',
+        r'(\d+)\s+veces\s+al\s+día',
+        r'(\d+)\s+times\s+per\s+day',
+        r'diario|semanal|mensual'
+    ]
+    
+    for patron in patrones:
+        match = re.search(patron, texto, re.IGNORECASE)
+        if match:
+            return match.group(0).strip()
+    return "No especificada"
+
+def extraer_bloques_horarios(texto):
+    """Extrae bloques horarios de emisión"""
+    patron_horario = r'(\d{1,2}:\d{2})\s*(?:a|–|-)\s*(\d{1,2}:\d{2})'
+    matches = re.findall(patron_horario, texto)
+    return [f"{inicio} a {fin}" for inicio, fin in matches]
+
+def extraer_duracion_spots(texto):
+    """Extrae duración de los spots"""
+    patrones = [
+        r'(\d+)\s*segundos?',
+        r'duracion[:\s]*(\d+)\s*s',
+        r'(\d+)\s*"',
+        r'(\d+)\s*seg'
+    ]
+    
+    for patron in patrones:
+        match = re.search(patron, texto, re.IGNORECASE)
+        if match:
+            return f"{match.group(1)} segundos"
+    return "No especificada"
+
+def extraer_rango_fechas(texto):
+    """Extrae rango de fechas de la campaña"""
+    patron_fecha = r'(\d{1,2}/\d{1,2}/\d{4})\s*(?:a|–|-)\s*(\d{1,2}/\d{1,2}/\d{4})'
+    match = re.search(patron_fecha, texto)
+    if match:
+        return f"{match.group(1)} a {match.group(2)}"
+    
+    # Buscar fecha única
+    patron_fecha_unica = r'\d{1,2}/\d{1,2}/\d{4}'
+    fechas = re.findall(patron_fecha_unica, texto)
+    if fechas:
+        return fechas[0]
+    
+    return "No especificada"
+
+def extraer_inversion(texto):
+    """Extrae monto de inversión publicitaria"""
+    patrones = [
+        r'inversión[:\s]*\$?\s*([\d,]+(?:\.\d{2})?)',
+        r'inversion[:\s]*\$?\s*([\d,]+(?:\.\d{2})?)',
+        r'monto[:\s]*\$?\s*([\d,]+(?:\.\d{2})?)',
+        r'total[:\s]*\$?\s*([\d,]+(?:\.\d{2})?)',
+        r'valor[:\s]*\$?\s*([\d,]+(?:\.\d{2})?)'
+    ]
+    
+    for patron in patrones:
+        match = re.search(patron, texto, re.IGNORECASE)
+        if match:
+            try:
+                return float(match.group(1).replace(',', ''))
+            except:
+                return match.group(1)
+    return "No especificado"
+
+# ============================================
+# PROCESAMIENTO DE FACTURAS MEJORADO
+# ============================================
+
+def validar_factura_automatica(provider_info, texto):
+    """Valida factura con reglas específicas del cliente"""
+    validaciones = {
+        'tiene_ruc': provider_info.get('ruc') != 'No detectado',
+        'tiene_fecha': provider_info.get('fecha') != 'No detectada',
+        'tiene_total': provider_info.get('total') != 'No detectado',
+        'es_valida_sunat': validar_estado_sunat(provider_info.get('ruc')),
+        'aplica_retencion': determinar_retencion(provider_info, texto),
+        'aplica_detraccion': determinar_detraccion(provider_info, texto),
+        'igv_correcto': validar_igv(provider_info, texto)
+    }
+    
+    return validaciones
+
+def determinar_retencion(provider_info, texto):
+    """Determina si aplica retención según giro del proveedor"""
+    # Lógica de retención (simplificada)
+    giros_retencion = [
+        'servicios', 'consultoria', 'honorarios', 'alquileres',
+        'publicidad', 'marketing', 'asesoria'
+    ]
+    
+    texto_lower = texto.lower()
+    if any(giro in texto_lower for giro in giros_retencion):
+        return "Sí - 8%"
+    return "No aplica"
+
+def determinar_detraccion(provider_info, texto):
+    """Determina si aplica detracción"""
+    giros_detraccion = [
+        'transporte', 'construccion', 'servicios publicos',
+        'venta combustible', 'venta minerales'
+    ]
+    
+    texto_lower = texto.lower()
+    if any(giro in texto_lower for giro in giros_detraccion):
+        return "Sí - 12%"
+    return "No aplica"
+
+def validar_igv(provider_info, texto):
+    """Valida que el IGV sea correcto"""
+    # Buscar IGV en el texto
+    patron_igv = r'IGV\s*[\(\)\d%\s]*:\s*\$?\s*([\d,]+(?:\.\d{2})?)'
+    match = re.search(patron_igv, texto, re.IGNORECASE)
+    
+    if match and provider_info.get('total'):
+        try:
+            igv_calculado = float(provider_info['total']) * 0.18
+            igv_documento = float(match.group(1).replace(',', ''))
+            # Permitir pequeña diferencia por redondeo
+            return abs(igv_calculado - igv_documento) < 0.5
+        except:
+            return False
+    return True
+
+def validar_estado_sunat(ruc):
+    """Valida estado del RUC en SUNAT (placeholder)"""
+    if ruc and ruc != 'No detectado':
+        return "Válido"  # En producción, integrar con API SUNAT
+    return "No validado"
+
+# ============================================
+# GESTIÓN DE CONTRATOS
+# ============================================
+
+def analizar_contratos(results):
+    """Analiza contratos para área legal"""
+    analisis_contratos = []
+    
+    for result in results:
+        texto = result.get('text', '')
+        if not texto:
+            continue
+            
+        contrato_info = {
+            'partes': extraer_partes_contrato(texto),
+            'fecha_contrato': extraer_fecha_contrato(texto),
+            'vigencia': extraer_vigencia_contrato(texto),
+            'objeto': extraer_objeto_contrato(texto),
+            'obligaciones': extraer_obligaciones_contrato(texto),
+            'penalidades': extraer_penalidades_contrato(texto),
+            'clausulas_importantes': identificar_clausulas_importantes(texto),
+            'estado': 'Por revisar'
+        }
+        
+        analisis_contratos.append(contrato_info)
+    
+    return analisis_contratos
+
+def extraer_partes_contrato(texto):
+    """Extrae las partes del contrato"""
+    patron_partes = [
+        r'ENTRE\s*:([^Y]+)Y\s*:([^,\n]+)',
+        r'CONTRATANTE[:\s]*([^\n]+)\s*CONTRATADO[:\s]*([^\n]+)',
+        r'DE UNA PARTE[:\s]*([^\n]+)\s*DE OTRA PARTE[:\s]*([^\n]+)'
+    ]
+    
+    for patron in patron_partes:
+        match = re.search(patron, texto, re.IGNORECASE | re.DOTALL)
+        if match:
+            parte1 = match.group(1).strip() if match.lastindex >= 1 else ""
+            parte2 = match.group(2).strip() if match.lastindex >= 2 else ""
+            return f"{parte1} - {parte2}"
+    
+    return "No detectadas"
+
+def extraer_fecha_contrato(texto):
+    """Extrae fecha del contrato"""
+    patron_fecha = r'contratado.*?(\d{1,2}/\d{1,2}/\d{4})'
+    match = re.search(patron_fecha, texto, re.IGNORECASE)
+    if match:
+        return match.group(1)
+    return "No detectada"
+
+def extraer_vigencia_contrato(texto):
+    """Extrae vigencia del contrato"""
+    patron_vigencia = r'vigencia.*?(\d+)\s*(días|meses|años)'
+    match = re.search(patron_vigencia, texto, re.IGNORECASE)
+    if match:
+        return f"{match.group(1)} {match.group(2)}"
+    return "No especificada"
+
+def extraer_objeto_contrato(texto):
+    """Extrae objeto del contrato"""
+    patron_objeto = r'OBJETO DEL CONTRATO[:\s]*(.*?)(?=CLÁUSULA|ARTÍCULO|$)' 
+    match = re.search(patron_objeto, texto, re.IGNORECASE | re.DOTALL)
+    if match:
+        return match.group(1).strip()[:200] + "..." if len(match.group(1)) > 200 else match.group(1).strip()
+    return "No detectado"
+
+def extraer_obligaciones_contrato(texto):
+    """Extrae obligaciones principales"""
+    obligaciones = []
+    patron_obligaciones = r'OBLIGACIONES?[:\s]*(.*?)(?=CLÁUSULA|ARTÍCULO|DERECHOS|PENALIDADES)'
+    match = re.search(patron_obligaciones, texto, re.IGNORECASE | re.DOTALL)
+    if match:
+        contenido = match.group(1)
+        # Extraer puntos principales
+        lineas = [line.strip() for line in contenido.split('\n') if len(line.strip()) > 10]
+        obligaciones.extend(lineas[:5])  # Máximo 5 obligaciones
+    return obligaciones
+
+def extraer_penalidades_contrato(texto):
+    """Extrae cláusulas de penalidad"""
+    penalidades = []
+    patron_penalidades = r'PENALIDADES?[:\s]*(.*?)(?=CLÁUSULA|ARTÍCULO|RESOLUCIÓN)'
+    match = re.search(patron_penalidades, texto, re.IGNORECASE | re.DOTALL)
+    if match:
+        contenido = match.group(1)
+        # Buscar montos de penalidad
+        patron_montos = r'(\$?\s*\d+(?:\.\d{2})?)\s*(?:soles|USD|dólares)'
+        montos = re.findall(patron_montos, contenido, re.IGNORECASE)
+        penalidades.extend(montos)
+    return penalidades
+
+def identificar_clausulas_importantes(texto):
+    """Identifica cláusulas importantes"""
+    clausulas_importantes = [
+        'confidencialidad', 'propiedad intelectual', 'terminación',
+        'jurisdicción', 'fuerza mayor', 'garantías', 'indemnización'
+    ]
+    
+    encontradas = []
+    texto_lower = texto.lower()
+    for clausula in clausulas_importantes:
+        if clausula in texto_lower:
+            encontradas.append(clausula)
+    
+    return encontradas
+
+# ============================================
+# FUNCIONES MEJORADAS PARA PROMPTS ESTRUCTURADOS
+# ============================================
+
+def get_structured_prompt(query, provider_analysis, documents_text):
+    """Genera un prompt altamente estructurado para Bedrock"""
+    
+    # Construir contexto de proveedores de manera estructurada
+    providers_context = build_providers_context(provider_analysis)
+    products_context = build_products_context(provider_analysis)
+    recommendations_context = build_recommendations_context(provider_analysis)
+    
+    prompt = f"""
+# CONTEXTO Y ROL
+Eres un **analista senior de compras y proveedores** especializado en optimización de costos. 
+Tu objetivo principal es ayudar a tomar decisiones inteligentes sobre proveedores basadas en datos concretos.
+
+# FORMATO DE RESPUESTA OBLIGATORIO
+**SIGUE ESTRICTAMENTE este formato en español:**
+
+## 🎯 Análisis Principal
+[Resumen ejecutivo de 2-3 líneas con la conclusión más importante]
+
+## 📊 Datos Comparativos
+- **Proveedor recomendado:** [Nombre]
+- **Ahorro potencial:** [Monto específico]
+- **Categoría:** [Categoría específica]
+- **Productos analizados:** [Número]
+
+## 💡 Recomendación Específica
+[Recomendación accionable y concreta]
+
+## 📈 Detalles Técnicos
+[Análisis detallado con datos específicos]
+
+# INFORMACIÓN DE PROVEEDORES DISPONIBLE
+{providers_context}
+
+# ANÁLISIS DE PRODUCTOS POR CATEGORÍA
+{products_context}
+
+# RECOMENDACIONES DETECTADAS
+{recommendations_context}
+
+# DOCUMENTOS PROCESADOS
+{documents_text[:3000]}
+
+# CONSULTA DEL USUARIO: "{query}"
+
+# REGLAS ESTRICTAS:
+1. **SOLO usar información de los documentos proporcionados**
+2. **NO inventar datos o proveedores**
+3. **SER específico con montos y porcentajes**
+4. **PRIORIZAR ahorros económicos demostrables**
+5. **USAR emojis relevantes para mejor legibilidad**
+6. **SI no hay datos suficientes, DECIRLO claramente**
+7. **EVITAR lenguaje genérico - ser concreto**
+8. **INCLUIR números específicos siempre que sea posible**
+"""
+    return prompt
+
+def build_providers_context(provider_analysis):
+    """Construye contexto estructurado de proveedores"""
+    if not provider_analysis:
+        return "No se detectaron proveedores en los documentos."
+    
+    context = "## 📋 PROVEEDORES DETECTADOS:\n"
+    for provider in provider_analysis.get('providers', []):
+        context += f"\n**🏪 {provider['nombre']}**\n"
+        context += f"- 📅 Fecha: {provider['fecha']}\n"
+        context += f"- 💰 Total documento: {provider['total']}\n"
+        context += f"- 📦 Productos: {len(provider['productos'])}\n"
+        if provider.get('ruc') and provider['ruc'] != 'No detectado':
+            context += f"- 🆔 RUC: {provider['ruc']}\n"
+    
+    return context
+
+def build_products_context(provider_analysis):
+    """Construye análisis estructurado de productos"""
+    if not provider_analysis or not provider_analysis.get('analisis_categorias'):
+        return "No hay análisis de productos disponible."
+    
+    context = "## 📊 ANÁLISIS POR CATEGORÍAS:\n"
+    for categoria, datos in provider_analysis['analisis_categorias'].items():
+        context += f"\n**📦 {categoria.upper()}**\n"
+        context += f"- Precio promedio: S/. {datos.get('precio_promedio', 0):.2f}\n"
+        context += f"- Rango: S/. {datos.get('precio_min', 0):.2f} - S/. {datos.get('precio_max', 0):.2f}\n"
+        context += f"- Proveedores: {', '.join(list(datos.get('proveedores', []))[:3])}\n"
+        context += f"- Total productos: {datos.get('total_productos', 0)}\n"
+    
+    return context
+
+def build_recommendations_context(provider_analysis):
+    """Construye recomendaciones estructuradas"""
+    if not provider_analysis or not provider_analysis.get('recomendaciones'):
+        return "No hay recomendaciones disponibles."
+    
+    recs = provider_analysis['recomendaciones']
+    context = "## 💡 OPORTUNIDADES IDENTIFICADAS:\n"
+    
+    if recs.get('mejores_proveedores'):
+        context += "\n**🏆 MEJORES PROVEEDORES POR CATEGORÍA:**\n"
+        for categoria, mejor in recs['mejores_proveedores'].items():
+            context += f"- {categoria}: {mejor['proveedor']} (S/. {mejor.get('precio', 0):.2f})\n"
+    
+    if recs.get('ahorros_potenciales'):
+        context += "\n**💰 AHORROS POTENCIALES:**\n"
+        for ahorro in recs['ahorros_potenciales']:
+            context += f"- {ahorro['categoria']}: S/. {ahorro.get('ahorro_estimado', 0):.2f} con {ahorro['proveedor_recomendado']}\n"
+    
+    return context
+
+# ============================================
+# FUNCIONES DE ANÁLISIS MEJORADAS CON TEXTRACT
+# ============================================
+
+def extract_products_from_tables(tables_data, provider_name):
+    """Extrae productos de las tablas detectadas por Textract - MEJORADO"""
+    products = []
+    
+    for table_info in tables_data:
+        df = table_info['dataframe']
+        
+        # Buscar columnas que puedan contener productos y precios
+        product_columns = []
+        price_columns = []
+        quantity_columns = []
+        
+        for col in df.columns:
+            col_str = str(col).lower()
+            if any(word in col_str for word in ['producto', 'descripción', 'item', 'concepto', 'servicio']):
+                product_columns.append(col)
+            elif any(word in col_str for word in ['precio', 'importe', 'valor', 'costo', 'unitario']):
+                price_columns.append(col)
+            elif any(word in col_str for word in ['cantidad', 'qty', 'unidades']):
+                quantity_columns.append(col)
+        
+        # Si no encontramos columnas específicas, usar heurísticas
+        if not product_columns:
+            # Buscar columnas con texto que parezcan productos
+            for col in df.columns:
+                sample_values = df[col].dropna().head(3).astype(str)
+                if any(len(str(val)) > 10 and any(char.isalpha() for char in str(val)) for val in sample_values):
+                    product_columns.append(col)
+        
+        if not price_columns:
+            # Buscar columnas con valores numéricos
+            for col in df.columns:
+                try:
+                    numeric_values = pd.to_numeric(df[col].dropna(), errors='coerce')
+                    if numeric_values.notna().sum() > 0:
+                        price_columns.append(col)
+                except:
+                    pass
+        
+        # Extraer productos
+        for product_col in product_columns[:1]:  # Usar solo la primera columna de productos
+            for idx, row in df.iterrows():
+                product_name = str(row[product_col]).strip()
+                if (product_name and 
+                    product_name not in ['', 'nan', 'None'] and 
+                    len(product_name) > 2 and
+                    not any(word in product_name.lower() for word in ['total', 'subtotal', 'igv', 'impuesto'])):
+                    
+                    # Buscar precio
+                    price = None
+                    for price_col in price_columns:
+                        try:
+                            price_val = str(row[price_col]).replace(',', '').replace('S/', '').replace('$', '').strip()
+                            if price_val and price_val not in ['', 'nan', 'None']:
+                                price = float(price_val)
+                                break
+                        except:
+                            continue
+                    
+                    # Buscar cantidad
+                    quantity = None
+                    for qty_col in quantity_columns:
+                        qty_val = str(row[qty_col]).strip()
+                        if qty_val and qty_val not in ['', 'nan', 'None']:
+                            quantity = qty_val
+                            break
+                    
+                    products.append({
+                        'nombre': product_name,
+                        'precio': price,
+                        'cantidad': quantity,
+                        'categoria': categorize_product(product_name),
+                        'proveedor': provider_name,
+                        'fuente': 'tabla'
+                    })
+    
+    return products
+
+def extract_products_from_text(text, provider_name):
+    """Extrae productos del texto usando patrones mejorados"""
+    products = []
+    
+    # Patrones para líneas que parecen productos con precios
+    patterns = [
+        r'([A-Za-z\s\-\&]+)\s+(\d+)[\s,]*(\d+\.\d{2})',  # Producto cantidad precio
+        r'([A-Za-z\s\-\&]+)\s+S\/\.\s*(\d+\.\d{2})',     # Producto S/. precio
+        r'([A-Za-z\s\-\&]+)\s+\$?\s*(\d+[.,]\d{2})',     # Producto $ precio
+    ]
+    
+    for pattern in patterns:
+        matches = re.finditer(pattern, text)
+        for match in matches:
+            product_name = match.group(1).strip()
+            if len(product_name) > 3:  # Filtrar nombres muy cortos
+                price = None
+                quantity = None
+                
+                if len(match.groups()) >= 3:
+                    try:
+                        price = float(match.group(3).replace(',', '.'))
+                        quantity = match.group(2)
+                    except:
+                        pass
+                elif len(match.groups()) >= 2:
+                    try:
+                        price = float(match.group(2).replace(',', '.'))
+                    except:
+                        pass
+                
+                products.append({
+                    'nombre': product_name,
+                    'precio': price,
+                    'cantidad': quantity,
+                    'categoria': categorize_product(product_name),
+                    'proveedor': provider_name,
+                    'fuente': 'texto'
+                })
+    
+    return products
+
+def categorize_product(product_name):
+    """Categoriza productos automáticamente"""
+    product_name_lower = product_name.lower()
+    
+    categorias = {
+        'gaseosas': ['coca', 'pepsi', 'sprite', 'fanta', 'inca', 'cola', 'gaseosa', 'refresco'],
+        'aguas': ['agua', 'cielo', 'cristal', 'mineral', 'aqua'],
+        'cervezas': ['pilsen', 'cristal', 'cusqueña', 'heineken', 'corona', 'cerveza', 'lager'],
+        'jugos': ['jugo', 'néctar', 'refresco', 'pulp', 'zumo'],
+        'lácteos': ['leche', 'yogur', 'queso', 'mantequilla', 'lácteo', 'crema'],
+        'carnes': ['pollo', 'carne', 'pescado', 'res', 'cerdo', 'vacuno', 'filete'],
+        'granos': ['arroz', 'fideo', 'harina', 'maíz', 'trigo', 'avena', 'quinua'],
+        'básicos': ['aceite', 'azúcar', 'sal', 'pan', 'huevo', 'aceituna'],
+        'frutas_verduras': ['fruta', 'verdura', 'legumbre', 'vegetal', 'tomate', 'cebolla'],
+        'limpieza': ['jabón', 'detergente', 'limpiador', 'cloro', 'lavavajilla'],
+        'electrónicos': ['tv', 'televisor', 'celular', 'tablet', 'laptop', 'computadora']
+    }
+    
+    for categoria, palabras in categorias.items():
+        if any(palabra in product_name_lower for palabra in palabras):
+            return categoria
+    
+    return 'otros'
+
+def extract_provider_info_advanced(text, filename, tables_data=None, forms_data=None):
+    """Extrae información del proveedor usando Textract + Comprehend - MEJORADA"""
+    provider_info = {
+        'nombre': 'Desconocido',
+        'fecha': 'No detectada',
+        'total': 'No detectado',
+        'productos': [],
+        'filename': filename,
+        'ruc': 'No detectado',
+        'direccion': 'No detectada',
+        'tipo_documento': 'desconocido'
+    }
+    
+    # Usar Comprehend para análisis de entidades
+    try:
+        entities = comprehend.detect_entities(Text=text[:5000], LanguageCode='es')
+        for entity in entities['Entities']:
+            if entity['Type'] == 'ORGANIZATION' and provider_info['nombre'] == 'Desconocido':
+                provider_info['nombre'] = entity['Text']
+            elif entity['Type'] == 'DATE' and provider_info['fecha'] == 'No detectada':
+                provider_info['fecha'] = entity['Text']
+            elif entity['Type'] == 'COMMERCIAL_ITEM' and 'factura' in entity['Text'].lower():
+                provider_info['tipo_documento'] = 'factura'
+    except:
+        pass
+    
+    # Patrones mejorados para información del proveedor
+    provider_patterns = [
+        r'PROVEEDOR[:\s]+([^\n]+)',
+        r'EMISOR[:\s]+([^\n]+)',
+        r'RAZ[ÓO]N SOCIAL[:\s]+([^\n]+)',
+        r'EMPRESA[:\s]+([^\n]+)',
+        r'VENDEDOR[:\s]+([^\n]+)'
+    ]
+    
+    for pattern in provider_patterns:
+        match = re.search(pattern, text, re.IGNORECASE)
+        if match:
+            provider_name = match.group(1) if match.lastindex >= 1 else None
+            if provider_name is not None and len(provider_name.strip()) > 3:
+                provider_info['nombre'] = provider_name.strip()
+                break
+    
+    # Buscar RUC
+    ruc_patterns = [
+        r'RUC[:\s]*([0-9]{11})',
+        r'R\.U\.C\.?[:\s]*([0-9]{11})',
+    ]
+    
+    for pattern in ruc_patterns:
+        match = re.search(pattern, text)
+        if match and match.group(1) is not None:
+            provider_info['ruc'] = match.group(1)
+            break
+    
+    # Buscar fecha
+    date_patterns = [
+        r'FECHA[:\s]+(\d{1,2}[/-]\d{1,2}[/-]\d{2,4})',
+        r'FECHA DE EMISI[ÓO]N[:\s]+(\d{1,2}[/-]\d{1,2}[/-]\d{2,4})',
+    ]
+    
+    for pattern in date_patterns:
+        match = re.search(pattern, text)
+        if match and match.group(1) is not None:
+            provider_info['fecha'] = match.group(1)
+            break
+    
+    # Buscar total mejorado
+    total_patterns = [
+        r'TOTAL[:\s]*[\$S/\.\s]*([\d,]+(?:\.\d{2})?)',
+        r'IMPORTE TOTAL[:\s]*[\$S/\.\s]*([\d,]+(?:\.\d{2})?)',
+        r'MONTO TOTAL[:\s]*[\$S/\.\s]*([\d,]+(?:\.\d{2})?)',
+    ]
+    
+    for pattern in total_patterns:
+        match = re.search(pattern, text, re.IGNORECASE)
+        if match and match.group(1) is not None:
+            try:
+                provider_info['total'] = float(match.group(1).replace(',', ''))
+            except:
+                provider_info['total'] = match.group(1)
+            break
+    
+    # Extraer productos de múltiples fuentes
+    all_products = []
+    
+    # 1. De tablas (más confiable)
+    if tables_data:
+        table_products = extract_products_from_tables(tables_data, provider_info['nombre'])
+        all_products.extend(table_products)
+    
+    # 2. Del texto (como respaldo)
+    text_products = extract_products_from_text(text, provider_info['nombre'])
+    all_products.extend(text_products)
+    
+    # Eliminar duplicados
+    unique_products = []
+    seen_products = set()
+    for product in all_products:
+        product_key = f"{product['nombre']}_{product['precio']}"
+        if product_key not in seen_products:
+            seen_products.add(product_key)
+            unique_products.append(product)
+    
+    provider_info['productos'] = unique_products
+    
+    return provider_info
+
+def analyze_providers_comparison_advanced(results):
+    """Analiza y compara múltiples proveedores usando Textract + Bedrock"""
+    providers = []
+    all_products = []
+    
+    for result in results:
+        text = result.get('text', '')
+        if text and text.strip():
+            tables_data = extract_tables_from_result(result)
+            provider_info = extract_provider_info_advanced(
+                text, 
+                result['filename'], 
+                tables_data,
+                result.get('forms', {})
+            )
+            
+            # Solo agregar proveedores con información válida
+            if (provider_info['nombre'] != 'Desconocido' or 
+                provider_info['productos'] or
+                provider_info['total'] != 'No detectado'):
+                providers.append(provider_info)
+                
+                # Recolectar todos los productos para análisis
+                for producto in provider_info['productos']:
+                    all_products.append(producto)
+    
+    # Análisis por categorías
+    categorias_analisis = analyze_categories(all_products)
+    
+    # Generar recomendaciones
+    recomendaciones = generate_ai_recommendations(providers, all_products)
+    
+    # Análisis de precios comparativos
+    price_analysis = analyze_prices_comparison(all_products)
+    
+    return {
+        'total_providers': len(providers),
+        'providers': providers,
+        'productos_totales': all_products,
+        'analisis_categorias': categorias_analisis,
+        'recomendaciones': recomendaciones,
+        'analisis_precios': price_analysis
+    }
+
+def analyze_categories(products):
+    """Analiza productos por categorías"""
+    categorias = {}
+    
+    for producto in products:
+        categoria = producto['categoria']
+        if categoria not in categorias:
+            categorias[categoria] = {
+                'productos': [],
+                'proveedores': set(),
+                'precio_promedio': 0,
+                'precio_min': float('inf'),
+                'precio_max': 0,
+                'total_productos': 0
+            }
+        
+        categorias[categoria]['productos'].append(producto)
+        categorias[categoria]['proveedores'].add(producto['proveedor'])
+        categorias[categoria]['total_productos'] += 1
+        
+        # Estadísticas de precios
+        if producto['precio']:
+            precio = producto['precio']
+            categorias[categoria]['precio_promedio'] += precio
+            categorias[categoria]['precio_min'] = min(categorias[categoria]['precio_min'], precio)
+            categorias[categoria]['precio_max'] = max(categorias[categoria]['precio_max'], precio)
+    
+    # Calcular promedios
+    for categoria in categorias:
+        productos_con_precio = [p for p in categorias[categoria]['productos'] if p['precio']]
+        if productos_con_precio:
+            categorias[categoria]['precio_promedio'] /= len(productos_con_precio)
+        else:
+            categorias[categoria]['precio_promedio'] = 0
+            categorias[categoria]['precio_min'] = 0
+            categorias[categoria]['precio_max'] = 0
+    
+    return categorias
+
+def analyze_prices_comparison(products):
+    """Analiza comparación de precios entre proveedores"""
+    price_analysis = {}
+    
+    for producto in products:
+        if producto['precio']:
+            nombre_producto = producto['nombre']
+            if nombre_producto not in price_analysis:
+                price_analysis[nombre_producto] = {
+                    'proveedores': [],
+                    'precios': [],
+                    'precio_min': float('inf'),
+                    'precio_max': 0,
+                    'proveedor_mas_barato': None
+                }
+            
+            price_analysis[nombre_producto]['proveedores'].append(producto['proveedor'])
+            price_analysis[nombre_producto]['precios'].append(producto['precio'])
+            
+            # Actualizar min/max
+            if producto['precio'] < price_analysis[nombre_producto]['precio_min']:
+                price_analysis[nombre_producto]['precio_min'] = producto['precio']
+                price_analysis[nombre_producto]['proveedor_mas_barato'] = producto['proveedor']
+            
+            if producto['precio'] > price_analysis[nombre_producto]['precio_max']:
+                price_analysis[nombre_producto]['precio_max'] = producto['precio']
+    
+    return price_analysis
+
+def generate_ai_recommendations(providers, products):
+    """Genera recomendaciones inteligentes"""
+    if not providers or len(providers) < 2:
+        return {
+            'mejores_proveedores': {},
+            'ahorros_potenciales': [],
+            'alertas': ['Se necesitan al menos 2 proveedores para comparación']
+        }
+    
+    recomendaciones = {
+        'mejores_proveedores': {},
+        'ahorros_potenciales': [],
+        'alertas': []
+    }
+    
+    # Análisis por categoría
+    categorias = {}
+    for producto in products:
+        if producto['categoria'] not in categorias:
+            categorias[producto['categoria']] = []
+        categorias[producto['categoria']].append(producto)
+    
+    # Encontrar mejores precios por categoría
+    for categoria, productos_cat in categorias.items():
+        productos_con_precio = [p for p in productos_cat if p['precio']]
+        if productos_con_precio and len(set(p['proveedor'] for p in productos_con_precio)) >= 2:
+            mejor_precio = min(productos_con_precio, key=lambda x: x['precio'])
+            
+            recomendaciones['mejores_proveedores'][categoria] = {
+                'proveedor': mejor_precio['proveedor'],
+                'producto': mejor_precio['nombre'],
+                'precio': mejor_precio['precio'],
+                'categoria': categoria
+            }
+            
+            # Calcular ahorro potencial
+            precios = [p['precio'] for p in productos_con_precio if p['precio']]
+            if len(precios) > 1:
+                precio_promedio = sum(precios) / len(precios)
+                ahorro_potencial = precio_promedio - mejor_precio['precio']
+                if ahorro_potencial > 0:
+                    recomendaciones['ahorros_potenciales'].append({
+                        'categoria': categoria,
+                        'proveedor_recomendado': mejor_precio['proveedor'],
+                        'ahorro_estimado': round(ahorro_potencial, 2),
+                        'producto_ejemplo': mejor_precio['nombre']
+                    })
+    
+    return recomendaciones
+
+# ============================================
+# FUNCIONES AUXILIARES EXISTENTES
+# ============================================
+
+def analyze_with_comprehend(text):
+    """Analiza texto con AWS Comprehend para obtener metadatos"""
+    if not text:
+        return {}
+    
+    try:
+        clasificacion = clasificar_texto(text)
+        sentiment_response = comprehend.detect_sentiment(Text=text[:5000], LanguageCode='es')
+        entities_response = comprehend.detect_entities(Text=text[:5000], LanguageCode='es')
+        
+        return {
+            'clasificacion_documento': clasificacion,
+            'sentiment': sentiment_response.get('Sentiment', 'NEUTRAL'),
+            'sentiment_scores': sentiment_response.get('SentimentScore', {}),
+            'entities': entities_response.get('Entities', [])[:10],
+        }
+    except Exception as e:
+        return {
+            'clasificacion_documento': clasificar_texto(text)
+        }
+
+def calculate_file_metrics(result):
+    """Calcula métricas dinámicas para un archivo procesado"""
+    text = result.get('text', '')
+    tables_data = extract_tables_from_result(result)
+    forms = result.get('forms', {})
+    
+    word_count = len(text.split())
+    table_count = len(tables_data) if tables_data else 0
+    form_fields_count = len([k for k, v in forms.items() if k and k.strip() and v and v.strip()])
+    
+    return {
+        'word_count': word_count,
+        'table_count': table_count,
+        'form_fields_count': form_fields_count,
+    }
+
+def display_file_preview_grid(files):
+    """Muestra una cuadrícula de archivos moderna"""
+    cols_per_row = 6
+    files_per_row = min(cols_per_row, len(files))
+    
+    for i in range(0, len(files), files_per_row):
+        row_files = files[i:i + files_per_row]
+        cols = st.columns(files_per_row)
+        
+        for col_idx, file in enumerate(row_files):
+            with cols[col_idx]:
+                display_file_card(file)
+
+def display_file_card(file):
+    """Muestra una tarjeta individual de archivo con diseño premium"""
+    file_size = file.size / 1024
+    
+    if file.type and file.type.startswith('image/'):
+        file_icon = "🖼️"
+        file_type = "IMAGE"
+    elif file.name.lower().endswith('.pdf'):
+        file_icon = "📄"
+        file_type = "PDF"
+    elif file.name.lower().endswith('.eml'):
+        file_icon = "📧"
+        file_type = "EMAIL"
+    else:
+        file_icon = "📁"
+        file_type = "DOC"
+    
+    is_selected = st.session_state.get('selected_file_preview') == file
+    
+    st.markdown(f"""
+    <div class="file-card {'selected' if is_selected else ''}">
+        <div class="file-icon">{file_icon}</div>
+        <div class="file-name" title="{file.name}">{file.name[:20]}{'...' if len(file.name) > 20 else ''}</div>
+        <div class="file-size">{file_size:.1f} KB</div>
+        <div class="file-type">{file_type}</div>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    if st.button("Vista Previa", key=f"preview_{file.name}", use_container_width=True):
+        st.session_state['selected_file_preview'] = file
+        st.rerun()
+
+def display_selected_preview():
+    """Muestra la vista previa del archivo seleccionado"""
+    selected_file = st.session_state.get('selected_file_preview')
+    if selected_file:
+        with st.expander(f"👁️ Vista Previa: {selected_file.name}", expanded=True):
+            if selected_file.type and selected_file.type.startswith('image/'):
+                st.image(selected_file, use_container_width=True)
+            elif selected_file.name.lower().endswith('.pdf'):
+                st.markdown(f"""
+                <div style="text-align: center; padding: 2.5rem; background: var(--rpp-gray-50); border-radius: 12px; border: 1px solid var(--rpp-gray-200);">
+                    <div style="font-size: 4rem; margin-bottom: 1rem; opacity: 0.6;">📄</div>
+                    <h4 style="color: var(--rpp-dark); margin-bottom: 0.75rem; font-weight: 600;">{selected_file.name}</h4>
+                    <p style="color: var(--rpp-gray-600); margin: 0; font-size: 0.875rem;">Documento PDF listo para procesamiento inteligente</p>
+                </div>
+                """, unsafe_allow_html=True)
+
+def display_metrics_panel(result, file_idx):
+    """Muestra el panel de métricas dinámicas para un archivo procesado"""
+    metrics = st.session_state['file_metrics'].get(file_idx, {})
+    
+    st.markdown("**📊 Métricas de Procesamiento**")
+    
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        st.markdown(f"""
+        <div class="metric-card">
+            <div class="metric-value">{metrics.get('word_count', 0):,}</div>
+            <div class="metric-label">Palabras</div>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    with col2:
+        st.markdown(f"""
+        <div class="metric-card">
+            <div class="metric-value">{metrics.get('table_count', 0)}</div>
+            <div class="metric-label">Tablas</div>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    with col3:
+        st.markdown(f"""
+        <div class="metric-card">
+            <div class="metric-value">{metrics.get('form_fields_count', 0)}</div>
+            <div class="metric-label">Campos</div>
+        </div>
+        """, unsafe_allow_html=True)
+
+def get_base64_image(image_path):
+    try:
+        with open(image_path, "rb") as img_file:
+            return base64.b64encode(img_file.read()).decode()
+    except:
+        return None
+
+def get_chat_suggestions(results):
+    """Genera sugerencias contextuales inteligentes basadas en tipos de documentos"""
+    suggestions = []
+    
+    # Analizar tipos de documentos
+    doc_types = []
+    for result in results:
+        if result.get('comprehend_analysis'):
+            clasificacion = result['comprehend_analysis'].get('clasificacion_documento', {})
+            doc_type = clasificacion.get('clase', 'desconocido')
+            doc_types.append(doc_type)
+    
+    # Contar tipos específicos
+    factura_count = doc_types.count('factura')
+    contrato_count = doc_types.count('contrato') 
+    legal_count = sum(1 for doc_type in doc_types if doc_type in ['demanda', 'carta_notarial'])
+    multiple_docs = len(results) >= 2
+    
+    # SUGERENCIAS ESPECÍFICAS POR TIPO DE DOCUMENTO
+    
+    # Para facturas
+    if factura_count >= 1:
+        suggestions.extend([
+            "📊 Comparar proveedores y analizar costos",
+            "💰 ¿Cuál proveedor es más conveniente?",
+            "📈 Mostrar tendencias de compra",
+            "🧾 Resumir montos y fechas de facturas"
+        ])
+    
+    # Para contratos/documentos legales
+    if contrato_count >= 1 or legal_count >= 1:
+        suggestions.extend([
+            "⚖️ Analizar cláusulas contractuales",
+            "⚠️ Identificar posibles penalidades",
+            "📑 Revisar obligaciones legales", 
+            "📅 Verificar fechas y plazos importantes"
+        ])
+    
+    # Para múltiples documentos
+    if multiple_docs:
+        suggestions.extend([
+            "📋 Comparar contenido entre documentos",
+            "🔍 Encontrar información común"
+        ])
+    
+    # SUGERENCIAS GENERALES (siempre disponibles)
+    general_suggestions = [
+        "📋 Resumir el contenido principal",
+        "🔍 Buscar información específica",
+        "📊 Extraer datos importantes"
+    ]
+    
+    # Combinar y eliminar duplicados
+    all_suggestions = suggestions + general_suggestions
+    unique_suggestions = list(dict.fromkeys(all_suggestions))
+    
+    return unique_suggestions[:6]  # Máximo 6 sugerencias
+
+# ============================================
+# ESTADO DE LA APLICACIÓN MEJORADO
+# ============================================
+
+if 'results' not in st.session_state:
+    st.session_state['results'] = []
+if 'chat_messages' not in st.session_state:
+    st.session_state['chat_messages'] = []
+if 'chat_visible' not in st.session_state:
+    st.session_state['chat_visible'] = False
+if 'processing_stats' not in st.session_state:
+    st.session_state['processing_stats'] = {'total_docs': 0, 'total_pages': 0, 'total_words': 0}
+if 'selected_file_preview' not in st.session_state:
+    st.session_state['selected_file_preview'] = None
+if 'file_metrics' not in st.session_state:
+    st.session_state['file_metrics'] = {}
+if 'provider_analysis' not in st.session_state:
+    st.session_state['provider_analysis'] = None
+if 'modo_procesamiento' not in st.session_state:
+    st.session_state['modo_procesamiento'] = 'general'  # 'publicidad', 'facturas', 'contratos'
+if 'analisis_especifico' not in st.session_state:
+    st.session_state['analisis_especifico'] = None
+
+# ============================================
+# SISTEMA DE DISEÑO CORPORATIVO PREMIUM (MANTENER EXISTENTE)
+# ============================================
+
 st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Space+Grotesk:wght@400;500;600;700&display=swap');
@@ -1136,838 +2224,6 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ============================================
-# ESTADO DE LA APLICACIÓN
-# ============================================
-
-if 'results' not in st.session_state:
-    st.session_state['results'] = []
-if 'chat_messages' not in st.session_state:
-    st.session_state['chat_messages'] = []
-if 'chat_visible' not in st.session_state:
-    st.session_state['chat_visible'] = False
-if 'processing_stats' not in st.session_state:
-    st.session_state['processing_stats'] = {'total_docs': 0, 'total_pages': 0, 'total_words': 0}
-if 'selected_file_preview' not in st.session_state:
-    st.session_state['selected_file_preview'] = None
-if 'file_metrics' not in st.session_state:
-    st.session_state['file_metrics'] = {}
-
-#NUEVO:Estado para análisis de proveedores
-if 'provider_analysis' not in st.session_state:
-    st.session_state['provider_analysis'] = None
-
-# ============================================
-# FUNCIONES AUXILIARES
-# ============================================
-
-def analyze_with_comprehend(text):
-    """Analiza texto con AWS Comprehend para obtener metadatos"""
-    if not text:
-        return {}
-    
-    try:
-        clasificacion = clasificar_texto(text)
-        sentiment_response = comprehend.detect_sentiment(Text=text[:5000], LanguageCode='es')
-        entities_response = comprehend.detect_entities(Text=text[:5000], LanguageCode='es')
-        
-        return {
-            'clasificacion_documento': clasificacion,
-            'sentiment': sentiment_response.get('Sentiment', 'NEUTRAL'),
-            'sentiment_scores': sentiment_response.get('SentimentScore', {}),
-            'entities': entities_response.get('Entities', [])[:10],
-        }
-    except Exception as e:
-        return {
-            'clasificacion_documento': clasificar_texto(text)
-        }
-
-def calculate_file_metrics(result):
-    """Calcula métricas dinámicas para un archivo procesado"""
-    text = result.get('text', '')
-    tables_data = extract_tables_from_result(result)
-    forms = result.get('forms', {})
-    
-    word_count = len(text.split())
-    table_count = len(tables_data) if tables_data else 0
-    form_fields_count = len([k for k, v in forms.items() if k and k.strip() and v and v.strip()])
-    
-    return {
-        'word_count': word_count,
-        'table_count': table_count,
-        'form_fields_count': form_fields_count,
-    }
-
-def display_file_preview_grid(files):
-    """Muestra una cuadrícula de archivos moderna"""
-    cols_per_row = 6
-    files_per_row = min(cols_per_row, len(files))
-    
-    for i in range(0, len(files), files_per_row):
-        row_files = files[i:i + files_per_row]
-        cols = st.columns(files_per_row)
-        
-        for col_idx, file in enumerate(row_files):
-            with cols[col_idx]:
-                display_file_card(file)
-
-def display_file_card(file):
-    """Muestra una tarjeta individual de archivo con diseño premium"""
-    file_size = file.size / 1024
-    
-    if file.type and file.type.startswith('image/'):
-        file_icon = "🖼️"
-        file_type = "IMAGE"
-    elif file.name.lower().endswith('.pdf'):
-        file_icon = "📄"
-        file_type = "PDF"
-    elif file.name.lower().endswith('.eml'):
-        file_icon = "📧"
-        file_type = "EMAIL"
-    else:
-        file_icon = "📁"
-        file_type = "DOC"
-    
-    is_selected = st.session_state.get('selected_file_preview') == file
-    
-    st.markdown(f"""
-    <div class="file-card {'selected' if is_selected else ''}">
-        <div class="file-icon">{file_icon}</div>
-        <div class="file-name" title="{file.name}">{file.name[:20]}{'...' if len(file.name) > 20 else ''}</div>
-        <div class="file-size">{file_size:.1f} KB</div>
-        <div class="file-type">{file_type}</div>
-    </div>
-    """, unsafe_allow_html=True)
-    
-    if st.button("Vista Previa", key=f"preview_{file.name}", use_container_width=True):
-        st.session_state['selected_file_preview'] = file
-        st.rerun()
-
-def display_selected_preview():
-    """Muestra la vista previa del archivo seleccionado"""
-    selected_file = st.session_state.get('selected_file_preview')
-    if selected_file:
-        with st.expander(f"👁️ Vista Previa: {selected_file.name}", expanded=True):
-            if selected_file.type and selected_file.type.startswith('image/'):
-                st.image(selected_file, use_container_width=True)
-            elif selected_file.name.lower().endswith('.pdf'):
-                st.markdown(f"""
-                <div style="text-align: center; padding: 2.5rem; background: var(--rpp-gray-50); border-radius: 12px; border: 1px solid var(--rpp-gray-200);">
-                    <div style="font-size: 4rem; margin-bottom: 1rem; opacity: 0.6;">📄</div>
-                    <h4 style="color: var(--rpp-dark); margin-bottom: 0.75rem; font-weight: 600;">{selected_file.name}</h4>
-                    <p style="color: var(--rpp-gray-600); margin: 0; font-size: 0.875rem;">Documento PDF listo para procesamiento inteligente</p>
-                </div>
-                """, unsafe_allow_html=True)
-
-def display_metrics_panel(result, file_idx):
-    """Muestra el panel de métricas dinámicas para un archivo procesado"""
-    metrics = st.session_state['file_metrics'].get(file_idx, {})
-    
-    st.markdown("**📊 Métricas de Procesamiento**")
-    
-    col1, col2, col3 = st.columns(3)
-    
-    with col1:
-        st.markdown(f"""
-        <div class="metric-card">
-            <div class="metric-value">{metrics.get('word_count', 0):,}</div>
-            <div class="metric-label">Palabras</div>
-        </div>
-        """, unsafe_allow_html=True)
-    
-    with col2:
-        st.markdown(f"""
-        <div class="metric-card">
-            <div class="metric-value">{metrics.get('table_count', 0)}</div>
-            <div class="metric-label">Tablas</div>
-        </div>
-        """, unsafe_allow_html=True)
-    
-    with col3:
-        st.markdown(f"""
-        <div class="metric-card">
-            <div class="metric-value">{metrics.get('form_fields_count', 0)}</div>
-            <div class="metric-label">Campos</div>
-        </div>
-        """, unsafe_allow_html=True)
-
-def get_base64_image(image_path):
-    try:
-        with open(image_path, "rb") as img_file:
-            return base64.b64encode(img_file.read()).decode()
-    except:
-        return None
-
-
-#####################ultima agregacion:# ============================================
-# FUNCIONES MEJORADAS PARA PROMPTS ESTRUCTURADOS
-# ============================================
-
-def get_structured_prompt(query, provider_analysis, documents_text):
-    """Genera un prompt altamente estructurado para Bedrock"""
-    
-    # Construir contexto de proveedores de manera estructurada
-    providers_context = build_providers_context(provider_analysis)
-    products_context = build_products_context(provider_analysis)
-    recommendations_context = build_recommendations_context(provider_analysis)
-    
-    prompt = f"""
-# CONTEXTO Y ROL
-Eres un **analista senior de compras y proveedores** especializado en optimización de costos. 
-Tu objetivo principal es ayudar a tomar decisiones inteligentes sobre proveedores basadas en datos concretos.
-
-# FORMATO DE RESPUESTA OBLIGATORIO
-**SIGUE ESTRICTAMENTE este formato en español:**
-
-## 🎯 Análisis Principal
-[Resumen ejecutivo de 2-3 líneas con la conclusión más importante]
-
-## 📊 Datos Comparativos
-- **Proveedor recomendado:** [Nombre]
-- **Ahorro potencial:** [Monto específico]
-- **Categoría:** [Categoría específica]
-- **Productos analizados:** [Número]
-
-## 💡 Recomendación Específica
-[Recomendación accionable y concreta]
-
-## 📈 Detalles Técnicos
-[Análisis detallado con datos específicos]
-
-# INFORMACIÓN DE PROVEEDORES DISPONIBLE
-{providers_context}
-
-# ANÁLISIS DE PRODUCTOS POR CATEGORÍA
-{products_context}
-
-# RECOMENDACIONES DETECTADAS
-{recommendations_context}
-
-# DOCUMENTOS PROCESADOS
-{documents_text[:3000]}
-
-# CONSULTA DEL USUARIO: "{query}"
-
-# REGLAS ESTRICTAS:
-1. **SOLO usar información de los documentos proporcionados**
-2. **NO inventar datos o proveedores**
-3. **SER específico con montos y porcentajes**
-4. **PRIORIZAR ahorros económicos demostrables**
-5. **USAR emojis relevantes para mejor legibilidad**
-6. **SI no hay datos suficientes, DECIRLO claramente**
-7. **EVITAR lenguaje genérico - ser concreto**
-8. **INCLUIR números específicos siempre que sea posible**
-"""
-    return prompt
-
-def build_providers_context(provider_analysis):
-    """Construye contexto estructurado de proveedores"""
-    if not provider_analysis:
-        return "No se detectaron proveedores en los documentos."
-    
-    context = "## 📋 PROVEEDORES DETECTADOS:\n"
-    for provider in provider_analysis.get('providers', []):
-        context += f"\n**🏪 {provider['nombre']}**\n"
-        context += f"- 📅 Fecha: {provider['fecha']}\n"
-        context += f"- 💰 Total documento: {provider['total']}\n"
-        context += f"- 📦 Productos: {len(provider['productos'])}\n"
-        if provider.get('ruc') and provider['ruc'] != 'No detectado':
-            context += f"- 🆔 RUC: {provider['ruc']}\n"
-    
-    return context
-
-def build_products_context(provider_analysis):
-    """Construye análisis estructurado de productos"""
-    if not provider_analysis or not provider_analysis.get('analisis_categorias'):
-        return "No hay análisis de productos disponible."
-    
-    context = "## 📊 ANÁLISIS POR CATEGORÍAS:\n"
-    for categoria, datos in provider_analysis['analisis_categorias'].items():
-        context += f"\n**📦 {categoria.upper()}**\n"
-        context += f"- Precio promedio: S/. {datos.get('precio_promedio', 0):.2f}\n"
-        context += f"- Rango: S/. {datos.get('precio_min', 0):.2f} - S/. {datos.get('precio_max', 0):.2f}\n"
-        context += f"- Proveedores: {', '.join(list(datos.get('proveedores', []))[:3])}\n"
-        context += f"- Total productos: {datos.get('total_productos', 0)}\n"
-    
-    return context
-
-def build_recommendations_context(provider_analysis):
-    """Construye recomendaciones estructuradas"""
-    if not provider_analysis or not provider_analysis.get('recomendaciones'):
-        return "No hay recomendaciones disponibles."
-    
-    recs = provider_analysis['recomendaciones']
-    context = "## 💡 OPORTUNIDADES IDENTIFICADAS:\n"
-    
-    if recs.get('mejores_proveedores'):
-        context += "\n**🏆 MEJORES PROVEEDORES POR CATEGORÍA:**\n"
-        for categoria, mejor in recs['mejores_proveedores'].items():
-            context += f"- {categoria}: {mejor['proveedor']} (S/. {mejor.get('precio', 0):.2f})\n"
-    
-    if recs.get('ahorros_potenciales'):
-        context += "\n**💰 AHORROS POTENCIALES:**\n"
-        for ahorro in recs['ahorros_potenciales']:
-            context += f"- {ahorro['categoria']}: S/. {ahorro.get('ahorro_estimado', 0):.2f} con {ahorro['proveedor_recomendado']}\n"
-    
-    return context
-
-# ============================================
-# FUNCIONES DE ANÁLISIS MEJORADAS CON TEXTRACT
-# ============================================
-
-def extract_products_from_tables(tables_data, provider_name):
-    """Extrae productos de las tablas detectadas por Textract - MEJORADO"""
-    products = []
-    
-    for table_info in tables_data:
-        df = table_info['dataframe']
-        
-        # Buscar columnas que puedan contener productos y precios
-        product_columns = []
-        price_columns = []
-        quantity_columns = []
-        
-        for col in df.columns:
-            col_str = str(col).lower()
-            if any(word in col_str for word in ['producto', 'descripción', 'item', 'concepto', 'servicio']):
-                product_columns.append(col)
-            elif any(word in col_str for word in ['precio', 'importe', 'valor', 'costo', 'unitario']):
-                price_columns.append(col)
-            elif any(word in col_str for word in ['cantidad', 'qty', 'unidades']):
-                quantity_columns.append(col)
-        
-        # Si no encontramos columnas específicas, usar heurísticas
-        if not product_columns:
-            # Buscar columnas con texto que parezcan productos
-            for col in df.columns:
-                sample_values = df[col].dropna().head(3).astype(str)
-                if any(len(str(val)) > 10 and any(char.isalpha() for char in str(val)) for val in sample_values):
-                    product_columns.append(col)
-        
-        if not price_columns:
-            # Buscar columnas con valores numéricos
-            for col in df.columns:
-                try:
-                    numeric_values = pd.to_numeric(df[col].dropna(), errors='coerce')
-                    if numeric_values.notna().sum() > 0:
-                        price_columns.append(col)
-                except:
-                    pass
-        
-        # Extraer productos
-        for product_col in product_columns[:1]:  # Usar solo la primera columna de productos
-            for idx, row in df.iterrows():
-                product_name = str(row[product_col]).strip()
-                if (product_name and 
-                    product_name not in ['', 'nan', 'None'] and 
-                    len(product_name) > 2 and
-                    not any(word in product_name.lower() for word in ['total', 'subtotal', 'igv', 'impuesto'])):
-                    
-                    # Buscar precio
-                    price = None
-                    for price_col in price_columns:
-                        try:
-                            price_val = str(row[price_col]).replace(',', '').replace('S/', '').replace('$', '').strip()
-                            if price_val and price_val not in ['', 'nan', 'None']:
-                                price = float(price_val)
-                                break
-                        except:
-                            continue
-                    
-                    # Buscar cantidad
-                    quantity = None
-                    for qty_col in quantity_columns:
-                        qty_val = str(row[qty_col]).strip()
-                        if qty_val and qty_val not in ['', 'nan', 'None']:
-                            quantity = qty_val
-                            break
-                    
-                    products.append({
-                        'nombre': product_name,
-                        'precio': price,
-                        'cantidad': quantity,
-                        'categoria': categorize_product(product_name),
-                        'proveedor': provider_name,
-                        'fuente': 'tabla'
-                    })
-    
-    return products
-
-def extract_products_from_text(text, provider_name):
-    """Extrae productos del texto usando patrones mejorados"""
-    products = []
-    
-    # Patrones para líneas que parecen productos con precios
-    patterns = [
-        r'([A-Za-z\s\-\&]+)\s+(\d+)[\s,]*(\d+\.\d{2})',  # Producto cantidad precio
-        r'([A-Za-z\s\-\&]+)\s+S\/\.\s*(\d+\.\d{2})',     # Producto S/. precio
-        r'([A-Za-z\s\-\&]+)\s+\$?\s*(\d+[.,]\d{2})',     # Producto $ precio
-    ]
-    
-    for pattern in patterns:
-        matches = re.finditer(pattern, text)
-        for match in matches:
-            product_name = match.group(1).strip()
-            if len(product_name) > 3:  # Filtrar nombres muy cortos
-                price = None
-                quantity = None
-                
-                if len(match.groups()) >= 3:
-                    try:
-                        price = float(match.group(3).replace(',', '.'))
-                        quantity = match.group(2)
-                    except:
-                        pass
-                elif len(match.groups()) >= 2:
-                    try:
-                        price = float(match.group(2).replace(',', '.'))
-                    except:
-                        pass
-                
-                products.append({
-                    'nombre': product_name,
-                    'precio': price,
-                    'cantidad': quantity,
-                    'categoria': categorize_product(product_name),
-                    'proveedor': provider_name,
-                    'fuente': 'texto'
-                })
-    
-    return products
-
-def categorize_product(product_name):
-    """Categoriza productos automáticamente"""
-    product_name_lower = product_name.lower()
-    
-    categorias = {
-        'gaseosas': ['coca', 'pepsi', 'sprite', 'fanta', 'inca', 'cola', 'gaseosa', 'refresco'],
-        'aguas': ['agua', 'cielo', 'cristal', 'mineral', 'aqua'],
-        'cervezas': ['pilsen', 'cristal', 'cusqueña', 'heineken', 'corona', 'cerveza', 'lager'],
-        'jugos': ['jugo', 'néctar', 'refresco', 'pulp', 'zumo'],
-        'lácteos': ['leche', 'yogur', 'queso', 'mantequilla', 'lácteo', 'crema'],
-        'carnes': ['pollo', 'carne', 'pescado', 'res', 'cerdo', 'vacuno', 'filete'],
-        'granos': ['arroz', 'fideo', 'harina', 'maíz', 'trigo', 'avena', 'quinua'],
-        'básicos': ['aceite', 'azúcar', 'sal', 'pan', 'huevo', 'aceituna'],
-        'frutas_verduras': ['fruta', 'verdura', 'legumbre', 'vegetal', 'tomate', 'cebolla'],
-        'limpieza': ['jabón', 'detergente', 'limpiador', 'cloro', 'lavavajilla'],
-        'electrónicos': ['tv', 'televisor', 'celular', 'tablet', 'laptop', 'computadora']
-    }
-    
-    for categoria, palabras in categorias.items():
-        if any(palabra in product_name_lower for palabra in palabras):
-            return categoria
-    
-    return 'otros'
-
-def extract_provider_info_advanced(text, filename, tables_data=None, forms_data=None):
-    """Extrae información del proveedor usando Textract + Comprehend - MEJORADA"""
-    provider_info = {
-        'nombre': 'Desconocido',
-        'fecha': 'No detectada',
-        'total': 'No detectado',
-        'productos': [],
-        'filename': filename,
-        'ruc': 'No detectado',
-        'direccion': 'No detectada',
-        'tipo_documento': 'desconocido'
-    }
-    
-    # Usar Comprehend para análisis de entidades
-    try:
-        entities = comprehend.detect_entities(Text=text[:5000], LanguageCode='es')
-        for entity in entities['Entities']:
-            if entity['Type'] == 'ORGANIZATION' and provider_info['nombre'] == 'Desconocido':
-                provider_info['nombre'] = entity['Text']
-            elif entity['Type'] == 'DATE' and provider_info['fecha'] == 'No detectada':
-                provider_info['fecha'] = entity['Text']
-            elif entity['Type'] == 'COMMERCIAL_ITEM' and 'factura' in entity['Text'].lower():
-                provider_info['tipo_documento'] = 'factura'
-    except:
-        pass
-    
-    # Patrones mejorados para información del proveedor
-    provider_patterns = [
-        r'PROVEEDOR[:\s]+([^\n]+)',
-        r'EMISOR[:\s]+([^\n]+)',
-        r'RAZ[ÓO]N SOCIAL[:\s]+([^\n]+)',
-        r'EMPRESA[:\s]+([^\n]+)',
-        r'VENDEDOR[:\s]+([^\n]+)'
-    ]
-    
-    for pattern in provider_patterns:
-        match = re.search(pattern, text, re.IGNORECASE)
-        if match:
-            provider_name = match.group(1) if match.lastindex >= 1 else None
-            if provider_name is not None and len(provider_name.strip()) > 3:
-                provider_info['nombre'] = provider_name.strip()
-                break
-    
-    # Buscar RUC
-    ruc_patterns = [
-        r'RUC[:\s]*([0-9]{11})',
-        r'R\.U\.C\.?[:\s]*([0-9]{11})',
-    ]
-    
-    for pattern in ruc_patterns:
-        match = re.search(pattern, text)
-        if match and match.group(1) is not None:
-            provider_info['ruc'] = match.group(1)
-            break
-    
-    # Buscar fecha
-    date_patterns = [
-        r'FECHA[:\s]+(\d{1,2}[/-]\d{1,2}[/-]\d{2,4})',
-        r'FECHA DE EMISI[ÓO]N[:\s]+(\d{1,2}[/-]\d{1,2}[/-]\d{2,4})',
-    ]
-    
-    for pattern in date_patterns:
-        match = re.search(pattern, text)
-        if match and match.group(1) is not None:
-            provider_info['fecha'] = match.group(1)
-            break
-    
-    # Buscar total mejorado
-    total_patterns = [
-        r'TOTAL[:\s]*[\$S/\.\s]*([\d,]+(?:\.\d{2})?)',
-        r'IMPORTE TOTAL[:\s]*[\$S/\.\s]*([\d,]+(?:\.\d{2})?)',
-        r'MONTO TOTAL[:\s]*[\$S/\.\s]*([\d,]+(?:\.\d{2})?)',
-    ]
-    
-    for pattern in total_patterns:
-        match = re.search(pattern, text, re.IGNORECASE)
-        if match and match.group(1) is not None:
-            try:
-                provider_info['total'] = float(match.group(1).replace(',', ''))
-            except:
-                provider_info['total'] = match.group(1)
-            break
-    
-    # Extraer productos de múltiples fuentes
-    all_products = []
-    
-    # 1. De tablas (más confiable)
-    if tables_data:
-        table_products = extract_products_from_tables(tables_data, provider_info['nombre'])
-        all_products.extend(table_products)
-    
-    # 2. Del texto (como respaldo)
-    text_products = extract_products_from_text(text, provider_info['nombre'])
-    all_products.extend(text_products)
-    
-    # Eliminar duplicados
-    unique_products = []
-    seen_products = set()
-    for product in all_products:
-        product_key = f"{product['nombre']}_{product['precio']}"
-        if product_key not in seen_products:
-            seen_products.add(product_key)
-            unique_products.append(product)
-    
-    provider_info['productos'] = unique_products
-    
-    return provider_info
-
-def analyze_providers_comparison_advanced(results):
-    """Analiza y compara múltiples proveedores usando Textract + Bedrock"""
-    providers = []
-    all_products = []
-    
-    for result in results:
-        text = result.get('text', '')
-        if text and text.strip():
-            tables_data = extract_tables_from_result(result)
-            provider_info = extract_provider_info_advanced(
-                text, 
-                result['filename'], 
-                tables_data,
-                result.get('forms', {})
-            )
-            
-            # Solo agregar proveedores con información válida
-            if (provider_info['nombre'] != 'Desconocido' or 
-                provider_info['productos'] or
-                provider_info['total'] != 'No detectado'):
-                providers.append(provider_info)
-                
-                # Recolectar todos los productos para análisis
-                for producto in provider_info['productos']:
-                    all_products.append(producto)
-    
-    # Análisis por categorías
-    categorias_analisis = analyze_categories(all_products)
-    
-    # Generar recomendaciones
-    recomendaciones = generate_ai_recommendations(providers, all_products)
-    
-    # Análisis de precios comparativos
-    price_analysis = analyze_prices_comparison(all_products)
-    
-    return {
-        'total_providers': len(providers),
-        'providers': providers,
-        'productos_totales': all_products,
-        'analisis_categorias': categorias_analisis,
-        'recomendaciones': recomendaciones,
-        'analisis_precios': price_analysis
-    }
-
-def analyze_categories(products):
-    """Analiza productos por categorías"""
-    categorias = {}
-    
-    for producto in products:
-        categoria = producto['categoria']
-        if categoria not in categorias:
-            categorias[categoria] = {
-                'productos': [],
-                'proveedores': set(),
-                'precio_promedio': 0,
-                'precio_min': float('inf'),
-                'precio_max': 0,
-                'total_productos': 0
-            }
-        
-        categorias[categoria]['productos'].append(producto)
-        categorias[categoria]['proveedores'].add(producto['proveedor'])
-        categorias[categoria]['total_productos'] += 1
-        
-        # Estadísticas de precios
-        if producto['precio']:
-            precio = producto['precio']
-            categorias[categoria]['precio_promedio'] += precio
-            categorias[categoria]['precio_min'] = min(categorias[categoria]['precio_min'], precio)
-            categorias[categoria]['precio_max'] = max(categorias[categoria]['precio_max'], precio)
-    
-    # Calcular promedios
-    for categoria in categorias:
-        productos_con_precio = [p for p in categorias[categoria]['productos'] if p['precio']]
-        if productos_con_precio:
-            categorias[categoria]['precio_promedio'] /= len(productos_con_precio)
-        else:
-            categorias[categoria]['precio_promedio'] = 0
-            categorias[categoria]['precio_min'] = 0
-            categorias[categoria]['precio_max'] = 0
-    
-    return categorias
-
-def analyze_prices_comparison(products):
-    """Analiza comparación de precios entre proveedores"""
-    price_analysis = {}
-    
-    for producto in products:
-        if producto['precio']:
-            nombre_producto = producto['nombre']
-            if nombre_producto not in price_analysis:
-                price_analysis[nombre_producto] = {
-                    'proveedores': [],
-                    'precios': [],
-                    'precio_min': float('inf'),
-                    'precio_max': 0,
-                    'proveedor_mas_barato': None
-                }
-            
-            price_analysis[nombre_producto]['proveedores'].append(producto['proveedor'])
-            price_analysis[nombre_producto]['precios'].append(producto['precio'])
-            
-            # Actualizar min/max
-            if producto['precio'] < price_analysis[nombre_producto]['precio_min']:
-                price_analysis[nombre_producto]['precio_min'] = producto['precio']
-                price_analysis[nombre_producto]['proveedor_mas_barato'] = producto['proveedor']
-            
-            if producto['precio'] > price_analysis[nombre_producto]['precio_max']:
-                price_analysis[nombre_producto]['precio_max'] = producto['precio']
-    
-    return price_analysis
-
-def generate_ai_recommendations(providers, products):
-    """Genera recomendaciones inteligentes"""
-    if not providers or len(providers) < 2:
-        return {
-            'mejores_proveedores': {},
-            'ahorros_potenciales': [],
-            'alertas': ['Se necesitan al menos 2 proveedores para comparación']
-        }
-    
-    recomendaciones = {
-        'mejores_proveedores': {},
-        'ahorros_potenciales': [],
-        'alertas': []
-    }
-    
-    # Análisis por categoría
-    categorias = {}
-    for producto in products:
-        if producto['categoria'] not in categorias:
-            categorias[producto['categoria']] = []
-        categorias[producto['categoria']].append(producto)
-    
-    # Encontrar mejores precios por categoría
-    for categoria, productos_cat in categorias.items():
-        productos_con_precio = [p for p in productos_cat if p['precio']]
-        if productos_con_precio and len(set(p['proveedor'] for p in productos_con_precio)) >= 2:
-            mejor_precio = min(productos_con_precio, key=lambda x: x['precio'])
-            
-            recomendaciones['mejores_proveedores'][categoria] = {
-                'proveedor': mejor_precio['proveedor'],
-                'producto': mejor_precio['nombre'],
-                'precio': mejor_precio['precio'],
-                'categoria': categoria
-            }
-            
-            # Calcular ahorro potencial
-            precios = [p['precio'] for p in productos_con_precio if p['precio']]
-            if len(precios) > 1:
-                precio_promedio = sum(precios) / len(precios)
-                ahorro_potencial = precio_promedio - mejor_precio['precio']
-                if ahorro_potencial > 0:
-                    recomendaciones['ahorros_potenciales'].append({
-                        'categoria': categoria,
-                        'proveedor_recomendado': mejor_precio['proveedor'],
-                        'ahorro_estimado': round(ahorro_potencial, 2),
-                        'producto_ejemplo': mejor_precio['nombre']
-                    })
-    
-    return recomendaciones
-
-
-
-#####################
-
-#esto estoy agregando al chatbot para sugerir respuestas basadas en el contexto del documento
-
-def extract_provider_info(text, filename):
-    """Extrae información del proveedor del texto de facturas - CORREGIDA"""
-    provider_info = {
-        'nombre': 'Desconocido',
-        'fecha': 'No detectada',
-        'total': 'No detectado',
-        'productos': [],
-        'filename': filename
-    }
-    
-    
-    # Buscar nombre del proveedor (patrones comunes)
-    provider_patterns = [
-        r'PROVEEDOR[:\s]+([^\n]+)',
-        r'EMISOR[:\s]+([^\n]+)',
-        r'RAZÓN SOCIAL[:\s]+([^\n]+)',
-        r'CLIENTE[:\s]+([^\n]+)',
-        r'SEÑOR(ES)?[:\s]+([^\n]+)'
-    ]
-    
-    for pattern in provider_patterns:
-        match = re.search(pattern, text, re.IGNORECASE)
-        if match:
-            # CORRECCIÓN: Verificar que group(1) no sea None antes de usar strip()
-            provider_name = match.group(1)
-            if provider_name is not None:
-                provider_info['nombre'] = provider_name.strip()
-            break
-    
-    # Buscar fecha
-    date_patterns = [
-        r'FECHA[:\s]+(\d{1,2}[/-]\d{1,2}[/-]\d{2,4})',
-        r'(\d{1,2}[/-]\d{1,2}[/-]\d{2,4})'
-    ]
-    
-    for pattern in date_patterns:
-        match = re.search(pattern, text)
-        if match and match.group(1) is not None:
-            provider_info['fecha'] = match.group(1)
-            break
-    
-    # Buscar total
-    total_patterns = [
-        r'TOTAL[:\s]*\$?\s*([\d,]+(?:\.\d{2})?)',
-        r'IMPORTE TOTAL[:\s]*\$?\s*([\d,]+(?:\.\d{2})?)',
-        r'MONTO TOTAL[:\s]*\$?\s*([\d,]+(?:\.\d{2})?)'
-    ]
-    
-    for pattern in total_patterns:
-        match = re.search(pattern, text, re.IGNORECASE)
-        if match and match.group(1) is not None:
-            try:
-                provider_info['total'] = float(match.group(1).replace(',', ''))
-            except:
-                provider_info['total'] = match.group(1)
-            break
-    
-    return provider_info
-
-def analyze_providers_comparison(results):
-    """Analiza y compara múltiples proveedores - MEJORADA"""
-    providers = []
-    
-    for result in results:
-        text = result.get('text', '')
-        if text and text.strip():  # Verificar que el texto no esté vacío
-            provider_info = extract_provider_info(text, result['filename'])
-            # Solo agregar proveedores con información válida
-            if provider_info['nombre'] != 'Desconocido' or provider_info['fecha'] != 'No detectada':
-                providers.append(provider_info)
-    
-    return {
-        'total_providers': len(providers),
-        'providers': providers
-    }
-def get_chat_suggestions(results):
-    """Genera sugerencias contextuales inteligentes basadas en tipos de documentos"""
-    suggestions = []
-    
-    # Analizar tipos de documentos
-    doc_types = []
-    for result in results:
-        if result.get('comprehend_analysis'):
-            clasificacion = result['comprehend_analysis'].get('clasificacion_documento', {})
-            doc_type = clasificacion.get('clase', 'desconocido')
-            doc_types.append(doc_type)
-    
-    # Contar tipos específicos
-    factura_count = doc_types.count('factura')
-    contrato_count = doc_types.count('contrato') 
-    legal_count = sum(1 for doc_type in doc_types if doc_type in ['demanda', 'carta_notarial'])
-    multiple_docs = len(results) >= 2
-    
-    # SUGERENCIAS ESPECÍFICAS POR TIPO DE DOCUMENTO
-    
-    # Para facturas
-    if factura_count >= 1:
-        suggestions.extend([
-            "📊 Comparar proveedores y analizar costos",
-            "💰 ¿Cuál proveedor es más conveniente?",
-            "📈 Mostrar tendencias de compra",
-            "🧾 Resumir montos y fechas de facturas"
-        ])
-    
-    # Para contratos/documentos legales
-    if contrato_count >= 1 or legal_count >= 1:
-        suggestions.extend([
-            "⚖️ Analizar cláusulas contractuales",
-            "⚠️ Identificar posibles penalidades",
-            "📑 Revisar obligaciones legales", 
-            "📅 Verificar fechas y plazos importantes"
-        ])
-    
-    # Para múltiples documentos
-    if multiple_docs:
-        suggestions.extend([
-            "📋 Comparar contenido entre documentos",
-            "🔍 Encontrar información común"
-        ])
-    
-    # SUGERENCIAS GENERALES (siempre disponibles)
-    general_suggestions = [
-        "📋 Resumir el contenido principal",
-        "🔍 Buscar información específica",
-        "📊 Extraer datos importantes"
-    ]
-    
-    # Combinar y eliminar duplicados
-    all_suggestions = suggestions + general_suggestions
-    unique_suggestions = list(dict.fromkeys(all_suggestions))
-    
-    return unique_suggestions[:6]  # Máximo 6 sugerencias
-
-# ============================================
 # HERO SECTION - DISEÑO PREMIUM CORPORATIVO
 # ============================================
 
@@ -1981,18 +2237,22 @@ st.markdown(f"""
                 {"<img src='data:image/png;base64,{}' class='hero-logo' alt='RPP'>".format(logo_base64) if logo_base64 else "<div style='color: white; font-weight: 800; font-size: 2rem;'>RPP</div>"}
             </div>
             <div class="hero-text">
-                <h1 class="hero-title" style="color: #FFFFFF">PLATAFORMA DE INTELIGENCIA</h1>
-                <p class="hero-subtitle">Solución empresarial de procesamiento inteligente de documentos mediante IA generativa y análisis avanzado</p>
+                <h1 class="hero-title" style="color: #FFFFFF">SOLUCIONES EMPRESARIALES IA</h1>
+                <p class="hero-subtitle">Automatización inteligente para órdenes publicitarias, facturas y contratos</p>
             </div>
         </div>
         <div class="hero-badges">
             <div class="hero-badge">
-                <span class="hero-badge-icon">⚡</span>
-                <span>AWS AI Services</span>
+                <span class="hero-badge-icon">📊</span>
+                <span>Órdenes Publicitarias</span>
             </div>
             <div class="hero-badge">
-                <span class="hero-badge-icon">🔒</span>
-                <span>Enterprise Grade</span>
+                <span class="hero-badge-icon">🧾</span>
+                <span>Facturación Automática</span>
+            </div>
+            <div class="hero-badge">
+                <span class="hero-badge-icon">⚖️</span>
+                <span>Gestión Contractual</span>
             </div>
         </div>
     </div>
@@ -2078,6 +2338,33 @@ with st.sidebar:
     
     st.markdown("---")
     
+    st.markdown("### 📈 Métricas del Procesamiento")
+    
+    if st.session_state.get('analisis_especifico'):
+        total_docs = len(st.session_state['analisis_especifico'])
+        modo_actual = st.session_state['modo_procesamiento']
+        
+        if modo_actual == 'publicidad':
+            total_spots = sum(orden.get('spots', 0) for orden in st.session_state['analisis_especifico'])
+            total_inversion = sum(orden.get('inversion', 0) for orden in st.session_state['analisis_especifico'] if isinstance(orden.get('inversion'), (int, float)))
+            
+            st.metric("Órdenes Procesadas", total_docs)
+            st.metric("Total Spots", total_spots)
+            st.metric("Inversión Total", f"S/. {total_inversion:,.2f}")
+            
+        elif modo_actual == 'facturas':
+            facturas_validadas = sum(1 for f in st.session_state['analisis_especifico'] if f['estado'] == 'VÁLIDA')
+            st.metric("Facturas Procesadas", total_docs)
+            st.metric("Facturas Válidas", facturas_validadas)
+            st.metric("Por Validar", total_docs - facturas_validadas)
+            
+        elif modo_actual == 'contratos':
+            clausulas_detectadas = sum(len(contrato.get('clausulas_importantes', [])) for contrato in st.session_state['analisis_especifico'])
+            st.metric("Contratos Analizados", total_docs)
+            st.metric("Cláusulas Importantes", clausulas_detectadas)
+    
+    st.markdown("---")
+    
     st.markdown("""
     <div class="sidebar-section">
         <div class="sidebar-title">🚀 Capacidades del Sistema</div>
@@ -2116,7 +2403,92 @@ with st.sidebar:
     """, unsafe_allow_html=True)
 
 # ============================================
-# SECCIÓN DE CARGA DE DOCUMENTOS - PREMIUM
+# SELECTOR DE MODO DE PROCESAMIENTO
+# ============================================
+
+st.markdown("""
+<div class="section-container">
+    <div class="section-header">
+        <span class="section-icon">🎯</span>
+        <div>
+            <h2 class="section-title">Selecciona el Tipo de Procesamiento</h2>
+            <p class="section-subtitle">Optimiza el análisis según tu necesidad específica</p>
+        </div>
+    </div>
+""", unsafe_allow_html=True)
+
+col1, col2, col3, col4 = st.columns(4)
+
+with col1:
+    if st.button("📊 Órdenes Publicitarias", use_container_width=True, 
+                type="primary" if st.session_state['modo_procesamiento'] == 'publicidad' else "secondary"):
+        st.session_state['modo_procesamiento'] = 'publicidad'
+        st.rerun()
+
+with col2:
+    if st.button("🧾 Procesar Facturas", use_container_width=True,
+                type="primary" if st.session_state['modo_procesamiento'] == 'facturas' else "secondary"):
+        st.session_state['modo_procesamiento'] = 'facturas'
+        st.rerun()
+
+with col3:
+    if st.button("⚖️ Análisis de Contratos", use_container_width=True,
+                type="primary" if st.session_state['modo_procesamiento'] == 'contratos' else "secondary"):
+        st.session_state['modo_procesamiento'] = 'contratos'
+        st.rerun()
+
+with col4:
+    if st.button("🔍 Procesamiento General", use_container_width=True,
+                type="primary" if st.session_state['modo_procesamiento'] == 'general' else "secondary"):
+        st.session_state['modo_procesamiento'] = 'general'
+        st.rerun()
+
+st.markdown("</div>", unsafe_allow_html=True)
+
+# ============================================
+# DESCRIPCIÓN DEL MODO SELECCIONADO
+# ============================================
+
+descripciones_modo = {
+    'publicidad': {
+        'titulo': '📊 Procesamiento de Órdenes Publicitarias',
+        'descripcion': 'Extracción automática de spots, frecuencias, bloques horarios y montos de inversión de formatos variables de agencias publicitarias.',
+        'beneficios': ['+80% eficiencia en registro', 'Detección de 5 versiones de documentos', 'Integración automática con sistemas']
+    },
+    'facturas': {
+        'titulo': '🧾 Automatización de Facturación',
+        'descripcion': 'Procesamiento masivo de facturas con validación SUNAT, determinación automática de retenciones y detracciones.',
+        'beneficios': ['1000+ facturas/mes', 'Validación automática SUNAT', 'Cálculo automático de impuestos']
+    },
+    'contratos': {
+        'titulo': '⚖️ Gestión Inteligente de Contratos',
+        'descripcion': 'Análisis automático de cláusulas, plazos, obligaciones y detección de riesgos contractuales.',
+        'beneficios': ['Revisión 5x más rápida', 'Detección de penalidades', 'Gestión de versiones']
+    },
+    'general': {
+        'titulo': '🔍 Procesamiento General de Documentos',
+        'descripcion': 'Análisis multipropósito para cualquier tipo de documento con IA avanzada.',
+        'beneficios': ['OCR inteligente', 'Clasificación automática', 'Extracción de datos estructurados']
+    }
+}
+
+modo_actual = st.session_state['modo_procesamiento']
+descripcion = descripciones_modo[modo_actual]
+
+st.markdown(f"""
+<div class="section-container">
+    <div style="background: linear-gradient(135deg, var(--rpp-primary-light) 0%, #EFF6FF 100%); border-radius: 12px; padding: 2rem; border-left: 4px solid var(--rpp-primary);">
+        <h3 style="color: var(--rpp-dark); margin-bottom: 1rem; font-size: 1.25rem; font-weight: 700;">{descripcion['titulo']}</h3>
+        <p style="color: var(--rpp-gray-700); margin-bottom: 1.5rem; line-height: 1.6;">{descripcion['descripcion']}</p>
+        <div style="display: flex; gap: 1rem; flex-wrap: wrap;">
+            {''.join([f'<span style="background: var(--rpp-success); color: white; padding: 0.5rem 1rem; border-radius: 20px; font-size: 0.875rem; font-weight: 600;">{beneficio}</span>' for beneficio in descripcion['beneficios']])}
+        </div>
+    </div>
+</div>
+""", unsafe_allow_html=True)
+
+# ============================================
+# CARGA DE DOCUMENTOS
 # ============================================
 
 st.markdown("""
@@ -2138,6 +2510,7 @@ uploaded_files = st.file_uploader(
 )
 
 st.markdown("</div>", unsafe_allow_html=True)
+
 # ============================================
 # VISTA PREVIA DE ARCHIVOS - GRID MODERNO
 # ============================================
@@ -2159,10 +2532,41 @@ if uploaded_files:
     
     st.markdown("<br>", unsafe_allow_html=True)
     
-    if st.button("🚀 Iniciar Procesamiento Inteligente", use_container_width=True, type="primary"):
-        with st.spinner("🔍 Procesando documentos con IA..."):
+    if st.button(f"🚀 Procesar {len(uploaded_files)} Documentos - Modo {modo_actual.upper()}", 
+                use_container_width=True, type="primary"):
+        
+        with st.spinner(f"🔍 Procesando documentos en modo {modo_actual}..."):
             results = process_files_with_textract(uploaded_files)
             
+            # Procesamiento específico según el modo
+            if modo_actual == 'publicidad':
+                ordenes_procesadas = procesar_ordenes_publicitarias(results)
+                st.session_state['analisis_especifico'] = ordenes_procesadas
+                
+            elif modo_actual == 'facturas':
+                # Usar análisis de proveedores existente pero mejorado
+                provider_analysis = analyze_providers_comparison_advanced(results)
+                st.session_state['provider_analysis'] = provider_analysis
+                
+                # Validar facturas
+                facturas_validadas = []
+                for result in results:
+                    texto = result.get('text', '')
+                    tables_data = extract_tables_from_result(result)
+                    provider_info = extract_provider_info_advanced(texto, result['filename'], tables_data)
+                    validaciones = validar_factura_automatica(provider_info, texto)
+                    facturas_validadas.append({
+                        'proveedor': provider_info,
+                        'validaciones': validaciones,
+                        'estado': 'VÁLIDA' if all(validaciones.values()) else 'REVISAR'
+                    })
+                st.session_state['analisis_especifico'] = facturas_validadas
+                
+            elif modo_actual == 'contratos':
+                analisis_contratos = analizar_contratos(results)
+                st.session_state['analisis_especifico'] = analisis_contratos
+            
+            # Procesamiento general para todos los modos
             for idx, result in enumerate(results):
                 text_content = result.get('text', '')
                 if text_content:
@@ -2175,42 +2579,128 @@ if uploaded_files:
             st.session_state['results'] = results
             st.session_state['chat_visible'] = True
             
-            # 🆕 ANÁLISIS AVANZADO: Usar el nuevo análisis mejorado
-            if len(results) >= 1:  # Ahora funciona incluso con un solo documento
-                provider_analysis = analyze_providers_comparison_advanced(results)
-                st.session_state['provider_analysis'] = provider_analysis
-                
-                # Mostrar análisis completo de proveedores
-                with st.expander("📊 Análisis Avanzado de Proveedores", expanded=True):
-                    st.markdown(f"**Se detectaron {provider_analysis['total_providers']} proveedores:**")
-                    
-                    for provider in provider_analysis['providers']:
-                        col1, col2, col3 = st.columns([3, 2, 2])
-                        with col1:
-                            st.write(f"**{provider['nombre']}**")
-                            if provider['ruc'] != 'No detectado':
-                                st.write(f"RUC: {provider['ruc']}")
-                        with col2:
-                            st.write(f"Fecha: {provider['fecha']}")
-                            st.write(f"Productos: {len(provider['productos'])}")
-                        with col3:
-                            st.write(f"Total: {provider['total']}")
-            
             st.session_state['processing_stats']['total_docs'] = len(results)
             st.session_state['processing_stats']['total_pages'] = sum(r.get('pages', 1) for r in results)
             st.session_state['processing_stats']['total_words'] = sum(len((r.get('text', '') or '').split()) for r in results)
             
-            st.success("✓ Procesamiento completado exitosamente")
+            st.success(f"✓ Procesamiento completado - {len(results)} documentos analizados")
             st.rerun()
     
     st.markdown("</div>", unsafe_allow_html=True)
 
+# ============================================
+# VISUALIZACIÓN DE RESULTADOS ESPECÍFICOS
+# ============================================
+
+if st.session_state.get('analisis_especifico') and st.session_state.get('results'):
+    st.markdown("""
+    <div class="section-container">
+        <div class="section-header">
+            <span class="section-icon">📈</span>
+            <div>
+                <h2 class="section-title">Resultados del Análisis Específico</h2>
+                <p class="section-subtitle">Información procesada y estructurada automáticamente</p>
+            </div>
+        </div>
+    """, unsafe_allow_html=True)
+    
+    if modo_actual == 'publicidad':
+        ordenes = st.session_state['analisis_especifico']
+        for i, orden in enumerate(ordenes):
+            with st.expander(f"📊 Orden Publicitaria {i+1} - {orden.get('agencia', 'Agencia')}", expanded=True):
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    st.metric("Agencia", orden.get('agencia', 'No detectada'))
+                    st.metric("Cliente", orden.get('cliente', 'No detectado'))
+                    st.metric("Medio", orden.get('medio', 'No especificado'))
+                    st.metric("Spots", orden.get('spots', 0))
+                
+                with col2:
+                    st.metric("Frecuencia", orden.get('frecuencia', 'No especificada'))
+                    st.metric("Duración", orden.get('duracion', 'No especificada'))
+                    st.metric("Inversión", f"S/. {orden.get('inversion', 0):,.2f}" if isinstance(orden.get('inversion'), (int, float)) else orden.get('inversion'))
+                    st.metric("Fechas", orden.get('fechas', 'No especificadas'))
+                
+                if orden.get('bloques_horarios'):
+                    st.write("**Bloques Horarios:**")
+                    for bloque in orden['bloques_horarios']:
+                        st.write(f"- {bloque}")
+    
+    elif modo_actual == 'facturas':
+        facturas = st.session_state['analisis_especifico']
+        for i, factura in enumerate(facturas):
+            proveedor = factura['proveedor']
+            validaciones = factura['validaciones']
+            estado = factura['estado']
+            
+            color_estado = "green" if estado == 'VÁLIDA' else "orange"
+            
+            with st.expander(f"🧾 Factura {i+1} - {proveedor.get('nombre', 'Proveedor')} - :{color_estado}[{estado}]", expanded=True):
+                col1, col2, col3 = st.columns(3)
+                
+                with col1:
+                    st.metric("Proveedor", proveedor.get('nombre', 'No detectado'))
+                    st.metric("RUC", proveedor.get('ruc', 'No detectado'))
+                    st.metric("Fecha", proveedor.get('fecha', 'No detectada'))
+                    st.metric("Total", f"S/. {proveedor.get('total', 0):,.2f}" if isinstance(proveedor.get('total'), (int, float)) else proveedor.get('total'))
+                
+                with col2:
+                    st.write("**Validaciones Automáticas:**")
+                    for validacion, resultado in validaciones.items():
+                        icono = "✅" if resultado in [True, "Sí", "Válido"] else "❌" if resultado in [False, "No"] else "⚠️"
+                        st.write(f"{icono} {validacion.replace('_', ' ').title()}: {resultado}")
+                
+               
+            with col3:
+                if proveedor.get('productos'):
+                    st.write("**Productos/Servicios:**")
+                    productos_con_precio = [p for p in proveedor['productos'][:5] if p.get('precio') is not None]
+                    productos_sin_precio = [p for p in proveedor['productos'][:5] if p.get('precio') is None]
+                    
+                    for producto in productos_con_precio:
+                        st.write(f"- {producto.get('nombre', 'Producto')}: S/. {producto.get('precio', 0):.2f}")
+                    
+                    for producto in productos_sin_precio:
+                        st.write(f"- {producto.get('nombre', 'Producto')}: Precio no disponible")    
+    elif modo_actual == 'contratos':
+        contratos = st.session_state['analisis_especifico']
+        for i, contrato in enumerate(contratos):
+            with st.expander(f"⚖️ Contrato {i+1} - {contrato.get('partes', 'Partes')}", expanded=True):
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    st.metric("Partes", contrato.get('partes', 'No detectadas'))
+                    st.metric("Fecha", contrato.get('fecha_contrato', 'No detectada'))
+                    st.metric("Vigencia", contrato.get('vigencia', 'No especificada'))
+                    st.metric("Estado", contrato.get('estado', 'Por revisar'))
+                
+                with col2:
+                    st.write("**Objeto del Contrato:**")
+                    st.write(contrato.get('objeto', 'No detectado'))
+                    
+                    if contrato.get('clausulas_importantes'):
+                        st.write("**Cláusulas Importantes:**")
+                        for clausula in contrato['clausulas_importantes']:
+                            st.write(f"- {clausula.title()}")
+                
+                if contrato.get('obligaciones'):
+                    st.write("**Obligaciones Principales:**")
+                    for obligacion in contrato['obligaciones'][:3]:
+                        st.write(f"- {obligacion}")
+                
+                if contrato.get('penalidades'):
+                    st.write("**Penalidades Detectadas:**")
+                    for penalidad in contrato['penalidades']:
+                        st.write(f"- S/. {penalidad}")
+    
+    st.markdown("</div>", unsafe_allow_html=True)
 
 # ============================================
-# RESULTADOS DEL ANÁLISIS - DISEÑO PREMIUM
+# RESULTADOS DEL ANÁLISIS GENERAL - DISEÑO PREMIUM
 # ============================================
 
-if st.session_state.get('results'):
+if st.session_state.get('results') and not st.session_state.get('analisis_especifico'):
     st.markdown("""
     <div class="section-container">
         <div class="section-header">
@@ -2334,7 +2824,7 @@ if st.session_state.get('results'):
     
     st.markdown("</div>", unsafe_allow_html=True)
 
-# # ============================================
+# ============================================
 # ASISTENTE IA - INTERFAZ DE CHAT MODERNA CON SUGERENCIAS
 # ============================================
 
@@ -2352,6 +2842,7 @@ if st.session_state.get('results') and not st.session_state.get('chat_visible'):
     if st.button("💬 Activar Asistente de IA", use_container_width=True, type="primary"):
         st.session_state['chat_visible'] = True
         st.rerun()
+
 if st.session_state.get('chat_visible'):
     # Inicializar session ID
     if 'bedrock_session_id' not in st.session_state:
