@@ -1,0 +1,9 @@
+streamlit
+boto3
+pandas
+python-dotenv
+PyPDF2
+Pillow
+pdf2image
+watchdog
+amazon-textract-response-parser==1.0.3
