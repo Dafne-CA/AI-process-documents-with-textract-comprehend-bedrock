@@ -809,16 +809,16 @@ def analyze_categories(products):
         categorias[categoria]['proveedores'].add(producto['proveedor'])
         categorias[categoria]['total_productos'] += 1
         
-        # Estadísticas de precios
-        if producto['precio']:
-            precio = producto['precio']
+        # Estadísticas de precios - SOLO si el precio no es None
+        precio = producto.get('precio')
+        if precio is not None and isinstance(precio, (int, float)):
             categorias[categoria]['precio_promedio'] += precio
             categorias[categoria]['precio_min'] = min(categorias[categoria]['precio_min'], precio)
             categorias[categoria]['precio_max'] = max(categorias[categoria]['precio_max'], precio)
     
     # Calcular promedios
     for categoria in categorias:
-        productos_con_precio = [p for p in categorias[categoria]['productos'] if p['precio']]
+        productos_con_precio = [p for p in categorias[categoria]['productos'] if p.get('precio') is not None]
         if productos_con_precio:
             categorias[categoria]['precio_promedio'] /= len(productos_con_precio)
         else:
@@ -2643,7 +2643,13 @@ if st.session_state.get('analisis_especifico') and st.session_state.get('results
                     st.metric("Proveedor", proveedor.get('nombre', 'No detectado'))
                     st.metric("RUC", proveedor.get('ruc', 'No detectado'))
                     st.metric("Fecha", proveedor.get('fecha', 'No detectada'))
-                    st.metric("Total", f"S/. {proveedor.get('total', 0):,.2f}" if isinstance(proveedor.get('total'), (int, float)) else proveedor.get('total'))
+                    
+                    # Manejar el total que podría ser string o número
+                    total = proveedor.get('total', 'No detectado')
+                    if isinstance(total, (int, float)):
+                        st.metric("Total", f"S/. {total:,.2f}")
+                    else:
+                        st.metric("Total", str(total))
                 
                 with col2:
                     st.write("**Validaciones Automáticas:**")
@@ -2651,18 +2657,20 @@ if st.session_state.get('analisis_especifico') and st.session_state.get('results
                         icono = "✅" if resultado in [True, "Sí", "Válido"] else "❌" if resultado in [False, "No"] else "⚠️"
                         st.write(f"{icono} {validacion.replace('_', ' ').title()}: {resultado}")
                 
-               
-            with col3:
-                if proveedor.get('productos'):
-                    st.write("**Productos/Servicios:**")
-                    productos_con_precio = [p for p in proveedor['productos'][:5] if p.get('precio') is not None]
-                    productos_sin_precio = [p for p in proveedor['productos'][:5] if p.get('precio') is None]
-                    
-                    for producto in productos_con_precio:
-                        st.write(f"- {producto.get('nombre', 'Producto')}: S/. {producto.get('precio', 0):.2f}")
-                    
-                    for producto in productos_sin_precio:
-                        st.write(f"- {producto.get('nombre', 'Producto')}: Precio no disponible")    
+                with col3:
+                    if proveedor.get('productos'):
+                        st.write("**Productos/Servicios:**")
+                        # Mostrar máximo 5 productos
+                        for producto in proveedor['productos'][:5]:
+                            nombre = producto.get('nombre', 'Producto')
+                            precio = producto.get('precio')
+                            
+                            # Manejar precio que podría ser None
+                            if precio is not None and isinstance(precio, (int, float)):
+                                st.write(f"- {nombre}: S/. {precio:.2f}")
+                            else:
+                                st.write(f"- {nombre}: Precio no disponible")
+
     elif modo_actual == 'contratos':
         contratos = st.session_state['analisis_especifico']
         for i, contrato in enumerate(contratos):
